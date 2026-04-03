@@ -14,9 +14,12 @@ import { Colors } from "../constants/Colors";
 // We divide screen width by 3 columns, subtracting margins to get the tile size.
 // This math ensures the grid always fits perfectly regardless of screen size.
 const SCREEN_WIDTH = Dimensions.get("window").width;
-const NUM_COLUMNS = 3;
-const TILE_MARGIN = 6;
-const TILE_SIZE = (SCREEN_WIDTH - TILE_MARGIN * (NUM_COLUMNS + 1)) / NUM_COLUMNS;
+const NUM_COLUMNS = 2;
+const TILE_MARGIN = 18;
+const CONTAINER_PADDING = 16; // ← must match the padding in explore.jsx
+
+// Subtract container padding from both sides before dividing
+const TILE_SIZE = (SCREEN_WIDTH - CONTAINER_PADDING * 2 - TILE_MARGIN * (NUM_COLUMNS + 1)) / NUM_COLUMNS;
 
 export default function ClubCard({ club, onPress }) {
     const colorScheme = useColorScheme();
@@ -57,7 +60,7 @@ export default function ClubCard({ club, onPress }) {
 }
 
 // Export TILE_SIZE and NUM_COLUMNS so explore.jsx can use them in FlatList
-export { TILE_SIZE, NUM_COLUMNS, TILE_MARGIN };
+export { TILE_SIZE, NUM_COLUMNS, TILE_MARGIN, CONTAINER_PADDING };
 
 const styles = StyleSheet.create({
     tile: {

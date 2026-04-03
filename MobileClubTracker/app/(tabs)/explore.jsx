@@ -12,10 +12,15 @@ import { useRouter } from "expo-router";
 import { Colors } from "../../constants/Colors";
 import ThemedView from "../../components/ThemedView";
 import SearchBar from "../../components/SearchBar";
-import ClubCard, { NUM_COLUMNS, TILE_MARGIN } from "../../components/ClubCard";
+import ClubCard, { NUM_COLUMNS, TILE_MARGIN, CONTAINER_PADDING } from "../../components/ClubCard";
 
 // Import test data — replace with real API fetch later
-import { testUser } from "../../test/testInstances";
+import {
+    testUser,
+    testClub,
+    testClub2,
+    testClub3
+ } from "../../test/testInstances";
 
 export default function Explore() {
     const router = useRouter();
@@ -27,17 +32,18 @@ export default function Explore() {
     // Get all clubs from all clubs the user follows — later this will come
     // from an API call that returns ALL clubs in the system, not just followed ones.
     // For now, we use the test data we have.
-    const allClubs = testUser.listFollowedClubs();
+    const allClubs = [testClub, testClub2, testClub3];
+    const unFollowedClubs = allClubs.filter(club => !testUser.listFollowedClubs().includes(club));
 
     // Derived state: filter the full club list based on the search query.
     // We convert both to lowercase so "chess" matches "Chess Club" etc.
     // When query is empty, filteredClubs === allClubs, showing everything.
-    const filteredClubs = allClubs.filter(club =>
+    const filteredClubs = unFollowedClubs.filter(club =>
         club.name.toLowerCase().includes(query.toLowerCase())
     );
 
     return (
-        <ThemedView safe={true}>
+        <ThemedView safe={true} style={styles.container}>
             <KeyboardAvoidingView
                 style={{ flex: 1 }}
                 behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -70,10 +76,7 @@ export default function Explore() {
                     renderItem={({ item }) => (
                         <ClubCard
                             club={item}
-                            onPress={() => {
-                                // Navigate to club detail page later
-                                console.log("Tapped:", item.name);
-                            }}
+                            onPress={() => router.push({ pathname: "/clubProfile", params: { name: item.name } })}
                         />
                     )}
 
@@ -97,6 +100,10 @@ export default function Explore() {
 }
 
 const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        padding: CONTAINER_PADDING,
+    },
     heading: {
         fontSize: 28,
         fontWeight: "700",
