@@ -5,36 +5,56 @@ import {
     useColorScheme,
     Pressable,
     Image,
+    Text,
 } from "react-native";
 import { Colors } from "../constants/Colors";
 
 export default function ThemedCard({
-    children,
     style,
     onPress,
     image,
     title,
     subtitle,
+    clubName,
 }) {
     const colorScheme = useColorScheme();
     const theme = Colors[colorScheme] ?? Colors.light;
 
     const content = (
         <View style={styles.row}>
-            <Image
-                source={
-                    image
-                        ? { uri: image }
-                        : require("../assets/adaptive-icon.png")
-                }
-                style={styles.avatar}
-            />
 
-            <View style={styles.textColumn}>
-                {title && <Text style={styles.title}>{title}</Text>}
-
-                {children}
+            {/* LEFT COLUMN: image + club name */}
+            <View style={styles.leftColumn}>
+                <Image
+                    source={
+                        image
+                            ? { uri: image }
+                            : require("../assets/adaptive-icon.png")
+                    }
+                    style={styles.avatar}
+                />
+                {clubName && (
+                    <Text style={styles.clubName}>{clubName}</Text>
+                )}
             </View>
+
+            {/* VERTICAL DIVIDER */}
+            <View style={styles.verticalDivider} />
+
+            {/* RIGHT COLUMN: title + horizontal divider + subtitle */}
+            <View style={styles.rightColumn}>
+                {title && (
+                    <Text style={styles.title}>{title}</Text>
+                )}
+
+                {/* HORIZONTAL DIVIDER */}
+                <View style={styles.horizontalDivider} />
+
+                {subtitle && (
+                    <Text style={styles.subtitle}>{subtitle}</Text>
+                )}
+            </View>
+
         </View>
     );
 
@@ -55,13 +75,7 @@ export default function ThemedCard({
     }
 
     return (
-        <View
-            style={[
-                styles.card,
-                { backgroundColor: theme.uiBackground },
-                style,
-            ]}
-        >
+        <View style={[styles.card, { backgroundColor: theme.uiBackground }, style]}>
             {content}
         </View>
     );
@@ -70,49 +84,65 @@ export default function ThemedCard({
 const styles = StyleSheet.create({
     card: {
         width: "95%",
-        padding: 16,
         borderRadius: 16,
         marginBottom: 15,
-
+        overflow: "hidden", // keeps dividers flush to card edges
         shadowColor: "#000",
         shadowOpacity: 0.08,
         shadowRadius: 8,
         shadowOffset: { width: 0, height: 3 },
-
         elevation: 4,
     },
-
     row: {
         flexDirection: "row",
-        alignItems: "center",
+        minHeight: 160,
     },
 
+    // LEFT
+    leftColumn: {
+        width: "35%",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 12,
+        gap: 8,
+    },
     avatar: {
-        width: 45,
-        height: 45,
-        borderRadius: 22.5,
-        marginRight: 12,
+        width: 70,
+        height: 70,
+        borderRadius: 35,
         backgroundColor: "#ccc",
     },
-
-    content: {
-        flex: 1,
+    clubName: {
+        fontSize: 13,
+        textAlign: "center",
     },
 
-    textColumn: {
+    // DIVIDERS
+    verticalDivider: {
+        width: 2,
+        backgroundColor: "#000",
+    },
+    horizontalDivider: {
+        height: 2,
+        backgroundColor: "#000",
+        marginVertical: 0,
+    },
+
+    // RIGHT
+    rightColumn: {
         flex: 1,
         flexDirection: "column",
-        justifyContent: "center",
     },
-
     title: {
         fontSize: 16,
-        fontWeight: "600",
+        fontWeight: "700",
+        padding: 12,
+        flex: 1,
     },
-
     subtitle: {
         fontSize: 13,
         color: "gray",
-        marginTop: 2,
+        padding: 12,
+        flex: 1,
     },
 });

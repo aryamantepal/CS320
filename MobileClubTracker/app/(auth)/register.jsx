@@ -1,17 +1,20 @@
 import React, { useState } from "react";
 import {
-    View,
     Text,
     TextInput,
     Pressable,
     StyleSheet,
     useColorScheme,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { loginUser } from "../../utils/auth";
 import { Colors } from "../../constants/Colors";
 
-import { ThemedView } from "../../components/ThemedView";
+import { registerUser } from "../../utils/auth";
+
+import ThemedView from "../../components/ThemedView";
 
 export default function Register() {
     const router = useRouter();
@@ -32,84 +35,94 @@ export default function Register() {
             alert("Please enter a valid email address");
             return;
         }
-
         if (!password) {
             alert("Password cannot be empty");
             return;
         }
-
-        // TEMP: simulate account creation
-        await loginUser(email);
-
-        router.replace("/(tabs)");
+        try {
+            await registerUser(email, password);
+            router.replace("/(tabs)");
+        } catch (err) {
+            alert(err.message); // shows "Email already registered" etc.
+        }
     };
 
     return (
         <ThemedView
-            style = {{ justifyContent: "center", backgroundColor: theme.background }}
+            style={styles.container}
         >
-            <Text style={[styles.title, { color: theme.title }]}>
-                Create Account
-            </Text>
-
-            {/* Email Input */}
-            <TextInput
-                placeholder="Email"
-                placeholderTextColor={theme.iconColor}
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                style={[
-                    styles.input,
-                    {
-                        borderColor: theme.iconColor,
-                        color: theme.text,
-                        backgroundColor: theme.uiBackground,
-                    },
-                ]}
-            />
-
-            {/* Password Input */}
-            <TextInput
-                placeholder="Password"
-                placeholderTextColor={theme.iconColor}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                style={[
-                    styles.input,
-                    {
-                        borderColor: theme.iconColor,
-                        color: theme.text,
-                        backgroundColor: theme.uiBackground,
-                    },
-                ]}
-            />
-
-            {/* Sign Up Button */}
-            <Pressable
-                style={[
-                    styles.button,
-                    { backgroundColor: Colors.primary },
-                ]}
-                onPress={handleRegister}
+            <KeyboardAvoidingView
+                style={{ flex: 1, justifyContent: "center", padding: 20 }}
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
             >
-                <Text style={[styles.buttonText, { color: "#fff" }]}>
-                    Sign Up
-                </Text>
-            </Pressable>
-
-            {/* Back to Login */}
-            <Pressable onPress={() => router.push("/login")}>
-                <Text
-                    style={[
-                        styles.link,
-                        { color: Colors.primary },
-                    ]}
+                <ScrollView
+                    style={{ backgroundColor: "transparent" }}
+                    contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
                 >
-                    Already have an account? Login
-                </Text>
-            </Pressable>
+                    <Text style={[styles.title, { color: theme.title }]}>
+                        Create Account
+                    </Text>
+
+                    {/* Email Input */}
+                    <TextInput
+                        placeholder="Email"
+                        placeholderTextColor={theme.iconColor}
+                        value={email}
+                        onChangeText={setEmail}
+                        autoCapitalize="none"
+                        style={[
+                            styles.input,
+                            {
+                                borderColor: theme.iconColor,
+                                color: theme.text,
+                                backgroundColor: theme.uiBackground,
+                            },
+                        ]}
+                    />
+
+                    {/* Password Input */}
+                    <TextInput
+                        placeholder="Password"
+                        placeholderTextColor={theme.iconColor}
+                        value={password}
+                        onChangeText={setPassword}
+                        secureTextEntry
+                        style={[
+                            styles.input,
+                            {
+                                borderColor: theme.iconColor,
+                                color: theme.text,
+                                backgroundColor: theme.uiBackground,
+                            },
+                        ]}
+                    />
+
+                    {/* Sign Up Button */}
+                    <Pressable
+                        style={[
+                            styles.button,
+                            { backgroundColor: Colors.primary },
+                        ]}
+                        onPress={handleRegister}
+                    >
+                        <Text style={[styles.buttonText, { color: "#fff" }]}>
+                            Sign Up
+                        </Text>
+                    </Pressable>
+
+                    {/* Back to Login */}
+                    <Pressable onPress={() => router.push("/login")}>
+                        <Text
+                            style={[
+                                styles.link,
+                                { color: Colors.primary },
+                            ]}
+                        >
+                            Already have an account? Login
+                        </Text>
+                    </Pressable>
+                </ScrollView>
+            </KeyboardAvoidingView>
         </ThemedView>
     );
 }
