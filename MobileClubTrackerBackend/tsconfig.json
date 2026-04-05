@@ -5,8 +5,8 @@
     "moduleResolution": "bundler",
     "esModuleInterop": true,
     "strict": true,
-    "outDir": "./dist",
-    "rootDir": "./"
+    "allowImportingTsExtensions": true,
+    "noEmit": true
   },
   "include": ["server.ts"],
   "exclude": ["node_modules", "generated"]
