@@ -1,8 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
@@ -14,7 +12,48 @@ datasource db {
 
 model User {
   id        Int      @id @default(autoincrement())
+  name      String?
   email     String   @unique
   password  String
   createdAt DateTime @default(now())
+  follows   Follow[]
+}
+
+model Organization {
+  id            Int            @id @default(autoincrement())
+  name          String         @unique
+  description   String?
+  createdAt     DateTime       @default(now())
+  followers     Follow[]
+  events        Event[]
+  announcements Announcement[]
+}
+
+model Follow {
+  userId         Int
+  organizationId Int
+  followedAt     DateTime     @default(now())
+  user           User         @relation(fields: [userId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@id([userId, organizationId])
+}
+
+model Event {
+  id             Int          @id @default(autoincrement())
+  title          String
+  startDateTime  DateTime
+  location       String
+  createdAt      DateTime     @default(now())
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id])
+}
+
+model Announcement {
+  id             Int          @id @default(autoincrement())
+  title          String
+  body           String
+  createdAt      DateTime     @default(now())
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id])
 }
