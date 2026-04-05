@@ -1,46 +1,67 @@
-import React from "react";
-import { ScrollView } from "react-native";
-
+import React, { useState, useCallback } from "react";
+import { ScrollView, ActivityIndicator, Text } from "react-native";
+import { useFocusEffect } from "expo-router";
 import ThemedCard from "../../components/ThemedCard";
-
-import { Club, Post, User } from "../../test/testObj.js"; // for testing purposes, will replace with actual data fetching later
-
-import {
-    testUser
-} from "../../test/testInstances.js"; // for testing purposes, will replace with actual data fetching later
 import ThemedView from "../../components/ThemedView.jsx";
+import { getUserId, API_URL } from "../../utils/auth";
 
 export default function Home() {
+    const [feed, setFeed] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    const generateFeed = (user) => {
-        const feedItems = [];
-        user.listFollowedClubs().forEach(club => {
-            club.posts.forEach(post => {
-                feedItems.push({ club, post }); // <--- keep the full objects
-            });
-        });
-        return feedItems;
-    };
+    // Re-fetches every time this tab comes into focus,
+    // so following a new club immediately appears in the feed.
+    useFocusEffect(
+        useCallback(() => {
+            const loadFeed = async () => {
+                setLoading(true);
+                const userId = await getUserId();
+                if (!userId) { setLoading(false); return; }
 
-    const feed = generateFeed(testUser);
+                try {
+                    const res = await fetch(`${API_URL}/feed/${userId}`);
+                    const data = await res.json();
+                    setFeed(Array.isArray(data) ? data : []);
+                } catch (err) {
+                    console.error("Failed to load feed:", err);
+                } finally {
+                    setLoading(false);
+                }
+            };
+            loadFeed();
+        }, [])
+    );
+
+    if (loading) {
+        return (
+            <ThemedView safe={true} style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+                <ActivityIndicator size="large" />
+            </ThemedView>
+        );
+    }
 
     return (
-        <ThemedView style={{paddingHorizontal: 20}} safe={true}>
-            <ScrollView style={{ backgroundColor: "transparent" }}
-                        contentContainerStyle={{ paddingBottom: 0 }} // add some padding at the bottom
+        <ThemedView style={{ paddingHorizontal: 20 }} safe={true}>
+            <ScrollView
+                style={{ backgroundColor: "transparent" }}
+                contentContainerStyle={{ paddingBottom: 40 }}
             >
-                {feed.map((item, index) => (
+                {feed.length === 0 && (
+                    <Text style={{ textAlign: "center", marginTop: 40, color: "gray", fontStyle: "italic" }}>
+                        Follow some clubs to see their posts here.
+                    </Text>
+                )}
+                {feed.map((item) => (
                     <ThemedCard
-                        key={index}
-                        image={item.club.profilePicture}   // Club has profilePicture, not image
-                        clubName={item.club.name}
-                        title={item.post.name}
+                        key={`${item.type}-${item.id}`}
+                        clubName={item.organization.name}
+                        title={item.title}
                         subtitle={
-                            item.post.type === "event"
-                                ? item.post.description         // events have description
-                                : item.post.content             // announcements have content
+                            item.type === "event"
+                                ? `📍 ${item.location} · ${new Date(item.startDateTime).toLocaleDateString()}`
+                                : item.body
                         }
-                        onPress={() => console.log("Pressed", item.post.name)}
+                        onPress={() => {}}
                     />
                 ))}
             </ScrollView>
