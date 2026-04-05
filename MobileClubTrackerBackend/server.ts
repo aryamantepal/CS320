@@ -31,7 +31,10 @@ app.post("/register", async (req, res) => {
 app.post("/login", async (req, res) => {
     const { email, password } = req.body;
     try {
-        const user = await prisma.user.findFirst({ where: { email, password } });
+        const user = await prisma.user.findFirst({
+            where: { email, password },
+            select: { id: true, email: true, name: true, createdAt: true },
+        });
         if (!user) return res.status(401).json({ error: "Invalid email or password" });
         res.json({ success: true, user });
     } catch (err) {
@@ -42,10 +45,13 @@ app.post("/login", async (req, res) => {
 
 // ── ORGS ──────────────────────────────────────────────────────────────────────
 
-// List all orgs
+// List all orgs with follower counts
 app.get("/orgs", async (_req, res) => {
     try {
-        const orgs = await prisma.organization.findMany({ orderBy: { name: "asc" } });
+        const orgs = await prisma.organization.findMany({
+            orderBy: { name: "asc" },
+            include: { _count: { select: { followers: true } } },
+        });
         res.json(orgs);
     } catch (err) {
         console.error(err);
@@ -53,7 +59,46 @@ app.get("/orgs", async (_req, res) => {
     }
 });
 
+// Get events + announcements for a single org, merged and sorted newest first
+app.get("/orgs/:orgId/posts", async (req, res) => {
+    const orgId = parseInt(req.params.orgId);
+    try {
+        const [events, announcements] = await Promise.all([
+            prisma.event.findMany({
+                where: { organizationId: orgId },
+                orderBy: { createdAt: "desc" },
+            }),
+            prisma.announcement.findMany({
+                where: { organizationId: orgId },
+                orderBy: { createdAt: "desc" },
+            }),
+        ]);
+
+        const posts = [
+            ...events.map((e) => ({ ...e, type: "event" as const })),
+            ...announcements.map((a) => ({ ...a, type: "announcement" as const })),
+        ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        res.json(posts);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
 // ── FOLLOWS ───────────────────────────────────────────────────────────────────
+
+// List all orgIds the user follows
+app.get("/follows/:userId", async (req, res) => {
+    const userId = parseInt(req.params.userId);
+    try {
+        const follows = await prisma.follow.findMany({ where: { userId } });
+        res.json(follows.map((f) => f.organizationId));
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
 
 // Follow an org
 app.post("/follow", async (req, res) => {
@@ -84,7 +129,7 @@ app.delete("/follow", async (req, res) => {
 
 // ── FEED ──────────────────────────────────────────────────────────────────────
 
-// Get feed for a user: events + announcements from followed orgs, sorted newest first
+// Events + announcements from orgs the user follows, sorted newest first
 app.get("/feed/:userId", async (req, res) => {
     const userId = parseInt(req.params.userId);
     try {
@@ -104,7 +149,6 @@ app.get("/feed/:userId", async (req, res) => {
             }),
         ]);
 
-        // Merge into a unified feed with a type tag, sorted newest first
         const feed = [
             ...events.map((e) => ({ ...e, type: "event" as const })),
             ...announcements.map((a) => ({ ...a, type: "announcement" as const })),
