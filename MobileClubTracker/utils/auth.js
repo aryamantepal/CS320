@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Use your computer's local IP (not localhost!) so your phone can reach it
 // Run `ipconfig` (Windows) or `ifconfig` (Mac) to find it
-const API_URL = "http://172.31.197.85:3000"; // <--- replace with your IP
+export const API_URL = "http://172.31.197.85:3000"; // <--- replace with your IP
 
 const USER_KEY = "loggedInUser";
 
@@ -26,8 +26,8 @@ export const loginUser = async (email, password) => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error);
 
-    // Save email locally so you know who's logged in
-    await AsyncStorage.setItem(USER_KEY, email);
+    // Store the full user object so screens can access id, email, etc.
+    await AsyncStorage.setItem(USER_KEY, JSON.stringify(data.user));
     return data;
 };
 
@@ -36,5 +36,11 @@ export const logoutUser = async () => {
 };
 
 export const getUser = async () => {
-    return await AsyncStorage.getItem(USER_KEY);
+    const raw = await AsyncStorage.getItem(USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+};
+
+export const getUserId = async () => {
+    const user = await getUser();
+    return user ? user.id : null;
 };
