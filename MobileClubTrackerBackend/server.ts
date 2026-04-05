@@ -62,6 +62,7 @@ app.get("/orgs", async (_req, res) => {
 // Get events + announcements for a single org, merged and sorted newest first
 app.get("/orgs/:orgId/posts", async (req, res) => {
     const orgId = parseInt(req.params.orgId);
+    if (isNaN(orgId)) return res.status(400).json({ error: "Invalid org id" });
     try {
         const [events, announcements] = await Promise.all([
             prisma.event.findMany({
@@ -91,6 +92,7 @@ app.get("/orgs/:orgId/posts", async (req, res) => {
 // List all orgIds the user follows
 app.get("/follows/:userId", async (req, res) => {
     const userId = parseInt(req.params.userId);
+    if (isNaN(userId)) return res.status(400).json({ error: "Invalid user id" });
     try {
         const follows = await prisma.follow.findMany({ where: { userId } });
         res.json(follows.map((f) => f.organizationId));
@@ -132,6 +134,7 @@ app.delete("/follow", async (req, res) => {
 // Events + announcements from orgs the user follows, sorted newest first
 app.get("/feed/:userId", async (req, res) => {
     const userId = parseInt(req.params.userId);
+    if (isNaN(userId)) return res.status(400).json({ error: "Invalid user id" });
     try {
         const follows = await prisma.follow.findMany({ where: { userId } });
         const orgIds = follows.map((f) => f.organizationId);
