@@ -1,17 +1,29 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, useColorScheme } from "react-native";
-import { loginUser } from "../../utils/auth";
+import {
+    Text,
+    TextInput,
+    Pressable,
+    StyleSheet,
+    useColorScheme,
+    KeyboardAvoidingView, // ← add this
+    Platform,             // ← add this so we can check iOS vs Android
+    ScrollView,           // ← add this so content can scroll when keyboard is tall
+} from "react-native";
 import { useRouter } from "expo-router";
+import { loginUser } from "../../utils/auth";
 import { Colors } from "../../constants/Colors";
+
+import ThemedView from "../../components/ThemedView";
+
 
 const ADMIN_EMAIL = "admin@club.com";
 const ADMIN_PASSWORD = "admin123";
 
 export default function Login() {
+    const router = useRouter();
+
     const colorScheme = useColorScheme();
     const theme = Colors[colorScheme] ?? Colors.light;
-
-    const router = useRouter();
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -26,45 +38,87 @@ export default function Login() {
             alert("Please enter a valid email address");
             return;
         }
-
-        if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
-            await loginUser(email);
-
+        try {
+            await loginUser(email, password); // now passes password too
             router.replace("/(tabs)");
-        } else {
-            alert("Invalid admin credentials");
+        } catch (err) {
+            alert(err.message); // shows "Invalid email or password" from server
         }
     };
 
     return (
-        <View style={styles.container}>
-            <Text style={styles.title}>Admin Login</Text>
+        <ThemedView style={styles.container} safe={true}>
+            {/*
+                KeyboardAvoidingView sits inside ThemedView.
+                - behavior="padding" adds bottom padding equal to keyboard height (iOS)
+                - On Android we pass undefined because the OS handles it natively
+                - style={{ flex: 1 }} is important — without it, the view
+                  collapses to zero height and nothing shows up
+            */}
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+            >
+                {/*
+                    ScrollView ensures that if the keyboard is very tall
+                    (like on a small phone), the user can still scroll up
+                    to see all the fields. Without this, content could get
+                    permanently hidden behind the keyboard.
+                    
+                    contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
+                    keeps your form centered vertically, just like before.
+                */}
+                <ScrollView
+                    contentContainerStyle={styles.container}
+                    keyboardShouldPersistTaps="handled" // tapping outside keyboard dismisses it
+                >
+                    <Text style={[styles.title, { color: theme.title }]}>
+                        Login
+                    </Text>
 
-            <TextInput
-                placeholder="Email"
-                value={email}
-                onChangeText={setEmail}
-                style={styles.input}
-                autoCapitalize="none"
-            />
+                    <TextInput
+                        placeholder="Email"
+                        placeholderTextColor={theme.iconColor}
+                        value={email}
+                        onChangeText={setEmail}
+                        autoCapitalize="none"
+                        style={[styles.input, {
+                            borderColor: theme.iconColor,
+                            color: theme.text,
+                            backgroundColor: theme.uiBackground,
+                        }]}
+                    />
 
-            <TextInput
-                placeholder="Password"
-                value={password}
-                onChangeText={setPassword}
-                style={styles.input}
-                secureTextEntry
-            />
+                    <TextInput
+                        placeholder="Password"
+                        placeholderTextColor={theme.iconColor}
+                        value={password}
+                        onChangeText={setPassword}
+                        secureTextEntry
+                        style={[styles.input, {
+                            borderColor: theme.iconColor,
+                            color: theme.text,
+                            backgroundColor: theme.uiBackground,
+                        }]}
+                    />
 
-            <Pressable style={styles.button} onPress={handleLogin}>
-                <Text style={styles.buttonText}>Login</Text>
-            </Pressable>
+                    <Pressable
+                        style={[styles.button, { backgroundColor: Colors.primary }]}
+                        onPress={handleLogin}
+                    >
+                        <Text style={[styles.buttonText, { color: "#fff" }]}>
+                            Login
+                        </Text>
+                    </Pressable>
 
-            {/* Link to registration */}
-            <Pressable onPress={() => router.replace("/register")}>
-                <Text style={styles.link}>Don't have an account? Sign Up</Text>
-            </Pressable>
-        </View>
+                    <Pressable onPress={() => router.push("/register")}>
+                        <Text style={[styles.link, { color: Colors.primary }]}>
+                            Don't have an account? Sign Up
+                        </Text>
+                    </Pressable>
+                </ScrollView>
+            </KeyboardAvoidingView>
+        </ThemedView>
     );
 }
 
@@ -72,7 +126,7 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         justifyContent: "center",
-        padding: 20,
+        paddingHorizontal: 20,
     },
     title: {
         fontSize: 28,
@@ -82,24 +136,21 @@ const styles = StyleSheet.create({
     },
     input: {
         borderWidth: 1,
-        borderColor: "#ccc",
         padding: 12,
         marginBottom: 15,
         borderRadius: 8,
     },
     button: {
-        backgroundColor: "black",
         padding: 15,
         borderRadius: 8,
+        marginTop: 10,
     },
     buttonText: {
-        color: "white",
         textAlign: "center",
         fontWeight: "bold",
     },
     link: {
         textAlign: "center",
-        color: "blue",
         marginTop: 15,
     },
 });
