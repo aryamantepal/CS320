@@ -45,8 +45,8 @@ export default function ClubPage() {
                 ]);
                 const postsData = await postsRes.json();
                 const followedOrgIds = await followsRes.json();
-                setPosts(postsData);
-                setIsFollowing(followedOrgIds.includes(orgId));
+                setPosts(Array.isArray(postsData) ? postsData : []);
+                setIsFollowing(Array.isArray(followedOrgIds) && followedOrgIds.includes(orgId));
             } catch (err) {
                 console.error("Failed to load club data:", err);
             } finally {
