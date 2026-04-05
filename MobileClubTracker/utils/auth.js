@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Use your computer's local IP (not localhost!) so your phone can reach it
 // Run `ipconfig` (Windows) or `ifconfig` (Mac) to find it
-const API_URL = "http://172.31.64.31:3000"; // <--- replace with your IP
+const API_URL = "http://172.31.197.85:3000"; // <--- replace with your IP
 
 const USER_KEY = "loggedInUser";
 
