@@ -30,6 +30,7 @@ export default function ClubPage() {
 
     const [posts, setPosts] = useState([]);
     const [isFollowing, setIsFollowing] = useState(false);
+    const [followerCount, setFollowerCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [userId, setUserId] = useState(null);
 
@@ -39,14 +40,17 @@ export default function ClubPage() {
             setUserId(uid);
 
             try {
-                const [postsRes, followsRes] = await Promise.all([
+                const [postsRes, followsRes, orgRes] = await Promise.all([
                     fetch(`${API_URL}/orgs/${orgId}/posts`),
                     fetch(`${API_URL}/follows/${uid}`),
+                    fetch(`${API_URL}/orgs/${orgId}`),
                 ]);
                 const postsData = await postsRes.json();
                 const followedOrgIds = await followsRes.json();
+                const orgData = await orgRes.json();
                 setPosts(Array.isArray(postsData) ? postsData : []);
                 setIsFollowing(Array.isArray(followedOrgIds) && followedOrgIds.includes(orgId));
+                setFollowerCount(orgData._count?.followers ?? 0);
             } catch (err) {
                 console.error("Failed to load club data:", err);
             } finally {
@@ -72,6 +76,7 @@ export default function ClubPage() {
                 });
             }
             setIsFollowing(!isFollowing);
+            setFollowerCount((c) => isFollowing ? c - 1 : c + 1);
         } catch (err) {
             console.error("Follow toggle failed:", err);
         }
@@ -131,6 +136,9 @@ export default function ClubPage() {
                             </Text>
                         </Pressable>
                     </View>
+                    <Text style={[styles.meta, { color: theme.iconColor }]}>
+                        {followerCount} {followerCount === 1 ? "follower" : "followers"}
+                    </Text>
                 </View>
 
                 {/* ── POSTS ── */}
@@ -183,6 +191,7 @@ const styles = StyleSheet.create({
     name: { fontSize: 22, fontWeight: "700", flex: 1, marginRight: 12 },
     followButton: { borderRadius: 20, paddingVertical: 7, paddingHorizontal: 18 },
     followButtonText: { fontSize: 14, fontWeight: "600" },
+    meta: { fontSize: 13, marginTop: 4, marginBottom: 4 },
     sectionContainer: { paddingHorizontal: 16, marginBottom: 8 },
     sectionTitle: { fontSize: 17, fontWeight: "700", marginBottom: 10, marginTop: 8 },
     emptyText: { fontSize: 14, fontStyle: "italic" },
