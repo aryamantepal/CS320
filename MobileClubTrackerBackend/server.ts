@@ -59,6 +59,23 @@ app.get("/orgs", async (_req, res) => {
     }
 });
 
+// Get a single org with follower count
+app.get("/orgs/:orgId", async (req, res) => {
+    const orgId = parseInt(req.params.orgId);
+    if (isNaN(orgId)) return res.status(400).json({ error: "Invalid org id" });
+    try {
+        const org = await prisma.organization.findUnique({
+            where: { id: orgId },
+            include: { _count: { select: { followers: true } } },
+        });
+        if (!org) return res.status(404).json({ error: "Org not found" });
+        res.json(org);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
 // Get events + announcements for a single org, merged and sorted newest first
 app.get("/orgs/:orgId/posts", async (req, res) => {
     const orgId = parseInt(req.params.orgId);
@@ -96,6 +113,25 @@ app.get("/follows/:userId", async (req, res) => {
     try {
         const follows = await prisma.follow.findMany({ where: { userId } });
         res.json(follows.map((f) => f.organizationId));
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// Full org objects (with follower counts) for orgs the user follows
+app.get("/follows/:userId/orgs", async (req, res) => {
+    const userId = parseInt(req.params.userId);
+    if (isNaN(userId)) return res.status(400).json({ error: "Invalid user id" });
+    try {
+        const follows = await prisma.follow.findMany({ where: { userId } });
+        const orgIds = follows.map((f) => f.organizationId);
+        const orgs = await prisma.organization.findMany({
+            where: { id: { in: orgIds } },
+            orderBy: { name: "asc" },
+            include: { _count: { select: { followers: true } } },
+        });
+        res.json(orgs);
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: "Server error" });

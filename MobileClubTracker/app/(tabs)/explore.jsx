@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 import {
     Text,
     FlatList,
@@ -8,7 +8,7 @@ import {
     Platform,
     ActivityIndicator,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Colors } from "../../constants/Colors";
 import ThemedView from "../../components/ThemedView";
 import SearchBar from "../../components/SearchBar";
@@ -24,20 +24,23 @@ export default function Explore() {
     const [orgs, setOrgs] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        const loadOrgs = async () => {
-            try {
-                const res = await fetch(`${API_URL}/orgs`);
-                const data = await res.json();
-                setOrgs(data);
-            } catch (err) {
-                console.error("Failed to load orgs:", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        loadOrgs();
-    }, []);
+    useFocusEffect(
+        useCallback(() => {
+            const loadOrgs = async () => {
+                setLoading(true);
+                try {
+                    const res = await fetch(`${API_URL}/orgs`);
+                    const data = await res.json();
+                    setOrgs(Array.isArray(data) ? data : []);
+                } catch (err) {
+                    console.error("Failed to load orgs:", err);
+                } finally {
+                    setLoading(false);
+                }
+            };
+            loadOrgs();
+        }, [])
+    );
 
     const filteredOrgs = orgs.filter((org) =>
         org.name.toLowerCase().includes(query.toLowerCase())

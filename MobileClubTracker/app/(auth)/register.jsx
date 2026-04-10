@@ -12,7 +12,7 @@ import {
 import { useRouter } from "expo-router";
 import { Colors } from "../../constants/Colors";
 
-import { registerUser } from "../../utils/auth";
+import { registerUser, loginUser } from "../../utils/auth";
 
 import ThemedView from "../../components/ThemedView";
 
@@ -41,6 +41,7 @@ export default function Register() {
         }
         try {
             await registerUser(email, password);
+            await loginUser(email, password);
             router.replace("/(tabs)");
         } catch (err) {
             alert(err.message); // shows "Email already registered" etc.

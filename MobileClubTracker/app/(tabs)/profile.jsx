@@ -1,5 +1,4 @@
-// app/(tabs)/profile.jsx
-import React from "react";
+import React, { useState, useCallback } from "react";
 import {
     View,
     Text,
@@ -9,11 +8,11 @@ import {
     StyleSheet,
     useColorScheme,
     Dimensions,
+    ActivityIndicator,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Colors } from "../../constants/Colors";
-import { logoutUser } from "../../utils/auth";
-import { testUser } from "../../test/testInstances";
+import { logoutUser, getUser, getUserId, API_URL } from "../../utils/auth";
 import ThemedView from "../../components/ThemedView.jsx";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -25,13 +24,44 @@ export default function Profile() {
     const colorScheme = useColorScheme();
     const theme = Colors[colorScheme] ?? Colors.light;
 
-    const user = testUser; // ← User, not Club
-    const followedClubs = user.listFollowedClubs(); // ← this now works correctly
+    const [user, setUser] = useState(null);
+    const [followedOrgs, setFollowedOrgs] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    const handleLogout = async () => { // ← was missing before
+    useFocusEffect(
+        useCallback(() => {
+            const loadProfile = async () => {
+                setLoading(true);
+                const currentUser = await getUser();
+                setUser(currentUser);
+
+                if (currentUser) {
+                    try {
+                        const res = await fetch(`${API_URL}/follows/${currentUser.id}/orgs`);
+                        const data = await res.json();
+                        setFollowedOrgs(Array.isArray(data) ? data : []);
+                    } catch (err) {
+                        console.error("Failed to load followed orgs:", err);
+                    }
+                }
+                setLoading(false);
+            };
+            loadProfile();
+        }, [])
+    );
+
+    const handleLogout = async () => {
         await logoutUser();
         router.replace("/(auth)/login");
     };
+
+    if (loading) {
+        return (
+            <ThemedView safe={true} style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+                <ActivityIndicator size="large" />
+            </ThemedView>
+        );
+    }
 
     return (
         <ThemedView safe={true} style={{ flex: 1 }}>
@@ -42,21 +72,13 @@ export default function Profile() {
                 {/* ── HEADER: Banner + Avatar ── */}
                 <View style={styles.headerContainer}>
                     <Image
-                        source={
-                            user.banner
-                                ? { uri: user.banner }
-                                : require("../../assets/splash-icon.png")
-                        }
+                        source={require("../../assets/splash-icon.png")}
                         style={styles.banner}
                         resizeMode="cover"
                     />
                     <View style={styles.avatarWrapper}>
                         <Image
-                            source={
-                                user.profilePicture
-                                    ? { uri: user.profilePicture }
-                                    : require("../../assets/adaptive-icon.png")
-                            }
+                            source={require("../../assets/adaptive-icon.png")}
                             style={[styles.avatar, { borderColor: theme.background }]}
                         />
                     </View>
@@ -65,48 +87,43 @@ export default function Profile() {
                 {/* ── USER INFO ── */}
                 <View style={[styles.infoSection, { backgroundColor: theme.uiBackground }]}>
                     <Text style={[styles.name, { color: theme.text }]}>
-                        {user.name}
+                        {user?.name ?? user?.email ?? ""}
                     </Text>
                     <Pressable
                         style={[styles.editButton, { borderColor: theme.iconColor }]}
                         onPress={() => {}}
                     >
-                        <Text style={[styles.editButtonText, { color: theme.text }]}>
-                            Edit Profile
-                        </Text>
+                        <Text style={[styles.editButtonText, { color: theme.text }]}>Edit Profile</Text>
                     </Pressable>
                 </View>
 
                 {/* ── FOLLOWED CLUBS ── */}
                 <View style={styles.sectionContainer}>
-                    <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                        Followed Clubs
-                    </Text>
-                    {followedClubs.length === 0 ? (
+                    <Text style={[styles.sectionTitle, { color: theme.text }]}>Followed Clubs</Text>
+                    {followedOrgs.length === 0 ? (
                         <Text style={[styles.emptyText, { color: theme.iconColor }]}>
                             You haven't followed any clubs yet.
                         </Text>
                     ) : (
-                        followedClubs.map((club, index) => (
+                        followedOrgs.map((org) => (
                             <Pressable
-                                key={index}
+                                key={org.id}
                                 style={[styles.clubRow, { backgroundColor: theme.uiBackground }]}
-                                onPress={() => router.push({ pathname: "/clubProfile", params: { name: club.name } })} // navigate to club page
+                                onPress={() =>
+                                    router.push({
+                                        pathname: "/clubProfile",
+                                        params: { id: org.id, name: org.name },
+                                    })
+                                }
                             >
                                 <Image
-                                    source={
-                                        club.profilePicture
-                                            ? { uri: club.profilePicture }
-                                            : require("../../assets/adaptive-icon.png")
-                                    }
+                                    source={require("../../assets/adaptive-icon.png")}
                                     style={styles.clubAvatar}
                                 />
                                 <View style={styles.clubInfo}>
-                                    <Text style={[styles.clubName, { color: theme.text }]}>
-                                        {club.name}
-                                    </Text>
+                                    <Text style={[styles.clubName, { color: theme.text }]}>{org.name}</Text>
                                     <Text style={[styles.clubMeta, { color: theme.iconColor }]}>
-                                        {club.followers} followers · {club.posts.length} posts
+                                        {org._count?.followers ?? 0} followers
                                     </Text>
                                 </View>
                                 <Text style={{ color: theme.iconColor, fontSize: 18 }}>›</Text>
@@ -117,22 +134,18 @@ export default function Profile() {
 
                 {/* ── ACCOUNT SETTINGS ── */}
                 <View style={styles.sectionContainer}>
-                    <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                        Account Settings
-                    </Text>
+                    <Text style={[styles.sectionTitle, { color: theme.text }]}>Account Settings</Text>
                     {[
                         { label: "Change Password", onPress: () => {} },
-                        { label: "Notifications",   onPress: () => {} },
-                        { label: "Privacy",          onPress: () => {} },
+                        { label: "Notifications", onPress: () => {} },
+                        { label: "Privacy", onPress: () => {} },
                     ].map((item, index) => (
                         <Pressable
                             key={index}
                             style={[styles.settingsRow, { backgroundColor: theme.uiBackground }]}
                             onPress={item.onPress}
                         >
-                            <Text style={[styles.settingsLabel, { color: theme.text }]}>
-                                {item.label}
-                            </Text>
+                            <Text style={[styles.settingsLabel, { color: theme.text }]}>{item.label}</Text>
                             <Text style={{ color: theme.iconColor, fontSize: 18 }}>›</Text>
                         </Pressable>
                     ))}
@@ -140,9 +153,7 @@ export default function Profile() {
                         style={[styles.settingsRow, { backgroundColor: theme.uiBackground }]}
                         onPress={handleLogout}
                     >
-                        <Text style={[styles.settingsLabel, { color: "tomato" }]}>
-                            Log Out
-                        </Text>
+                        <Text style={[styles.settingsLabel, { color: "tomato" }]}>Log Out</Text>
                     </Pressable>
                 </View>
             </ScrollView>
