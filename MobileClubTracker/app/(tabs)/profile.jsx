@@ -9,6 +9,12 @@ import {
     useColorScheme,
     Dimensions,
     ActivityIndicator,
+    // CHANGED: added Modal, TextInput, KeyboardAvoidingView, Platform for the club request form
+    Modal,
+    TextInput,
+    KeyboardAvoidingView,
+    Platform,
+    Alert,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Colors } from "../../constants/Colors";
@@ -27,6 +33,15 @@ export default function Profile() {
     const [user, setUser] = useState(null);
     const [followedOrgs, setFollowedOrgs] = useState([]);
     const [loading, setLoading] = useState(true);
+
+    // CHANGED: controls the "Be a Club Manager" modal visibility
+    const [showRequestModal, setShowRequestModal] = useState(false);
+
+    // CHANGED: form fields for the club manager request
+    const [clubName, setClubName] = useState("");
+    const [clubDescription, setClubDescription] = useState("");
+    const [clubLocation, setClubLocation] = useState("");
+    const [submitting, setSubmitting] = useState(false);
 
     useFocusEffect(
         useCallback(() => {
@@ -53,6 +68,44 @@ export default function Profile() {
     const handleLogout = async () => {
         await logoutUser();
         router.replace("/(auth)/login");
+    };
+
+    // CHANGED: submits the club manager request to the backend
+    const handleSubmitRequest = async () => {
+        if (!clubName.trim()) return Alert.alert("Error", "Club name is required");
+        if (!clubDescription.trim()) return Alert.alert("Error", "Description is required");
+        if (!clubLocation.trim()) return Alert.alert("Error", "Location is required");
+
+        setSubmitting(true);
+        try {
+            const res = await fetch(`${API_URL}/club-requests`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    userId: user.id,
+                    clubName: clubName.trim(),
+                    description: clubDescription.trim(),
+                    location: clubLocation.trim(),
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+
+            // Reset form and close modal
+            setClubName("");
+            setClubDescription("");
+            setClubLocation("");
+            setShowRequestModal(false);
+
+            Alert.alert(
+                "Request Submitted!",
+                "Your request has been sent to the admins. You will be notified once it's approved."
+            );
+        } catch (err) {
+            Alert.alert("Error", err.message ?? "Something went wrong. Try again.");
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     if (loading) {
@@ -149,6 +202,20 @@ export default function Profile() {
                             <Text style={{ color: theme.iconColor, fontSize: 18 }}>›</Text>
                         </Pressable>
                     ))}
+
+                    {/* CHANGED: "Be a Club Manager" button — only shown to base users, not managers */}
+                    {user?.role !== "manager" && (
+                        <Pressable
+                            style={[styles.settingsRow, { backgroundColor: theme.uiBackground }]}
+                            onPress={() => setShowRequestModal(true)}
+                        >
+                            <Text style={[styles.settingsLabel, { color: "#007AFF" }]}>
+                                🏛️ Be a Club Manager
+                            </Text>
+                            <Text style={{ color: theme.iconColor, fontSize: 18 }}>›</Text>
+                        </Pressable>
+                    )}
+
                     <Pressable
                         style={[styles.settingsRow, { backgroundColor: theme.uiBackground }]}
                         onPress={handleLogout}
@@ -157,6 +224,72 @@ export default function Profile() {
                     </Pressable>
                 </View>
             </ScrollView>
+
+            {/* CHANGED: Club Manager Request Modal */}
+            <Modal
+                visible={showRequestModal}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setShowRequestModal(false)}
+            >
+                <KeyboardAvoidingView
+                    style={styles.modalOverlay}
+                    behavior={Platform.OS === "ios" ? "padding" : undefined}
+                >
+                    <View style={[styles.modalBox, { backgroundColor: theme.uiBackground }]}>
+                        <Text style={[styles.modalTitle, { color: theme.text }]}>
+                            Start Your Club
+                        </Text>
+                        <Text style={[styles.modalSubtitle, { color: theme.iconColor }]}>
+                            Fill out the form below and our admins will review your request.
+                        </Text>
+
+                        <TextInput
+                            placeholder="Club Name"
+                            placeholderTextColor={theme.iconColor}
+                            value={clubName}
+                            onChangeText={setClubName}
+                            style={[styles.input, { borderColor: theme.iconColor, color: theme.text }]}
+                        />
+
+                        <TextInput
+                            placeholder="Description"
+                            placeholderTextColor={theme.iconColor}
+                            value={clubDescription}
+                            onChangeText={setClubDescription}
+                            multiline
+                            numberOfLines={3}
+                            style={[styles.input, styles.textArea, { borderColor: theme.iconColor, color: theme.text }]}
+                        />
+
+                        <TextInput
+                            placeholder="Location (e.g. UMass Amherst)"
+                            placeholderTextColor={theme.iconColor}
+                            value={clubLocation}
+                            onChangeText={setClubLocation}
+                            style={[styles.input, { borderColor: theme.iconColor, color: theme.text }]}
+                        />
+
+                        <View style={styles.modalButtons}>
+                            <Pressable
+                                style={[styles.modalBtn, { borderColor: theme.iconColor, borderWidth: 1 }]}
+                                onPress={() => setShowRequestModal(false)}
+                            >
+                                <Text style={{ color: theme.text }}>Cancel</Text>
+                            </Pressable>
+                            <Pressable
+                                style={[styles.modalBtn, { backgroundColor: "#007AFF" }]}
+                                onPress={handleSubmitRequest}
+                                disabled={submitting}
+                            >
+                                <Text style={{ color: "#fff", fontWeight: "600" }}>
+                                    {submitting ? "Submitting..." : "Submit"}
+                                </Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                </KeyboardAvoidingView>
+            </Modal>
         </ThemedView>
     );
 }
@@ -181,4 +314,28 @@ const styles = StyleSheet.create({
     clubMeta: { fontSize: 12, marginTop: 2 },
     settingsRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 14, borderRadius: 12, marginBottom: 8 },
     settingsLabel: { fontSize: 15 },
+
+    // CHANGED: modal styles
+    modalOverlay: {
+        flex: 1,
+        justifyContent: "flex-end",
+        backgroundColor: "rgba(0,0,0,0.4)",
+    },
+    modalBox: {
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        padding: 24,
+        gap: 12,
+    },
+    modalTitle: { fontSize: 20, fontWeight: "700" },
+    modalSubtitle: { fontSize: 13, marginBottom: 4 },
+    input: {
+        borderWidth: 1,
+        borderRadius: 10,
+        padding: 12,
+        fontSize: 15,
+    },
+    textArea: { height: 80, textAlignVertical: "top" },
+    modalButtons: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 8 },
+    modalBtn: { borderRadius: 10, paddingVertical: 10, paddingHorizontal: 20 },
 });
