@@ -33,7 +33,18 @@ app.post("/login", async (req, res) => {
     try {
         const user = await prisma.user.findFirst({
             where: { email, password },
-            select: { id: true, email: true, name: true, createdAt: true },
+            select: {
+                id: true,
+                email: true,
+                name: true,
+                createdAt: true,
+                // CHANGED: added role and managedOrg to the response so the
+                // frontend knows if the user is a manager and which club they manage
+                role: true,
+                managedOrg: {
+                    select: { id: true, name: true, description: true },
+                },
+            },
         });
         if (!user) return res.status(401).json({ error: "Invalid email or password" });
         res.json({ success: true, user });
@@ -103,6 +114,99 @@ app.get("/orgs/:orgId/posts", async (req, res) => {
         res.status(500).json({ error: "Server error" });
     }
 });
+
+// CHANGED: new route — allows a manager to create an event for their org
+app.post("/orgs/:orgId/events", async (req, res) => {
+    const orgId = parseInt(req.params.orgId);
+    if (isNaN(orgId)) return res.status(400).json({ error: "Invalid org id" });
+    const { title, location, startDateTime } = req.body;
+    try {
+        const event = await prisma.event.create({
+            data: {
+                title,
+                location,
+                startDateTime: new Date(startDateTime),
+                organizationId: orgId,
+            },
+        });
+        res.json(event);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// CHANGED: new route — allows a manager to create an announcement for their org
+app.post("/orgs/:orgId/announcements", async (req, res) => {
+    const orgId = parseInt(req.params.orgId);
+    if (isNaN(orgId)) return res.status(400).json({ error: "Invalid org id" });
+    const { title, body } = req.body;
+    try {
+        const announcement = await prisma.announcement.create({
+            data: {
+                title,
+                body,
+                organizationId: orgId,
+            },
+        });
+        res.json(announcement);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// CHANGED: new route — allows a manager to update their org's description
+app.patch("/orgs/:orgId", async (req, res) => {
+    const orgId = parseInt(req.params.orgId);
+    if (isNaN(orgId)) return res.status(400).json({ error: "Invalid org id" });
+    const { description } = req.body;
+    try {
+        const org = await prisma.organization.update({
+            where: { id: orgId },
+            data: { description },
+        });
+        res.json(org);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// CHANGED: new route — user submits a request to become a club manager
+app.post("/club-requests", async (req, res) => {
+    const { userId, clubName, description, location } = req.body;
+    try {
+        const existing = await prisma.clubRequest.findFirst({
+            where: { userId, status: "pending" }
+        });
+        if (existing) return res.status(400).json({ error: "You already have a pending request" });
+
+        const request = await prisma.clubRequest.create({
+            data: { userId, clubName, description, location }
+        });
+        res.json(request);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+/* ADMINS can view pending club requests with this query:
+SELECT r.id, u.email, r."clubName", r.description, r.location, r.status
+FROM "ClubRequest" r
+JOIN "User" u ON u.id = r."userId"
+WHERE r.status = 'pending';
+
+-- See pending requests
+SELECT r.id, u.email, r."clubName" FROM "ClubRequest" r
+JOIN "User" u ON u.id = r."userId" WHERE r.status = 'pending';
+
+-- Approve (replace IDs)
+UPDATE "User" SET role = 'manager' WHERE id = <userId>;
+UPDATE "Organization" SET "managerId" = <userId> WHERE id = <orgId>;
+UPDATE "ClubRequest" SET status = 'approved' WHERE id = <requestId>;
+*/
 
 // ── FOLLOWS ───────────────────────────────────────────────────────────────────
 

@@ -16,11 +16,11 @@ import {
     Platform,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { Colors } from "../constants/Colors";
-import ThemedView from "../components/ThemedView";
-import ThemedCard from "../components/ThemedCard";
+import { Colors } from "../../constants/Colors";
+import ThemedView from "../../components/ThemedView";
+import ThemedCard from "../../components/ThemedCard";
 // CHANGED: import getManagedOrg to check if this club belongs to the logged-in manager
-import { API_URL, getUserId, getManagedOrg } from "../utils/auth";
+import { API_URL, getUserId, getManagedOrg } from "../../utils/auth";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const BANNER_HEIGHT = 160;
@@ -171,7 +171,7 @@ export default function ClubPage() {
                 {/* ── HEADER: Banner + Avatar ── */}
                 <View style={styles.headerContainer}>
                     <Image
-                        source={require("../assets/adaptive-icon.png")}
+                        source={require("../../assets/adaptive-icon.png")}
                         style={styles.banner}
                         resizeMode="cover"
                     />
@@ -182,7 +182,7 @@ export default function ClubPage() {
 
                     <View style={styles.avatarWrapper}>
                         <Image
-                            source={require("../assets/adaptive-icon.png")}
+                            source={require("../../assets/adaptive-icon.png")}
                             style={[styles.avatar, { borderColor: theme.background }]}
                         />
                     </View>
@@ -193,22 +193,19 @@ export default function ClubPage() {
                     <View style={styles.nameRow}>
                         <Text style={[styles.name, { color: theme.text }]}>{name}</Text>
 
-                        {/* CHANGED: hide follow button if this is the manager's own club */}
-                        {!isMyClub && (
-                            <Pressable
-                                style={[
-                                    styles.followButton,
-                                    isFollowing
-                                        ? { borderWidth: 1, borderColor: theme.iconColor }
-                                        : { backgroundColor: "#007AFF" },
-                                ]}
-                                onPress={handleFollowToggle}
-                            >
-                                <Text style={[styles.followButtonText, { color: isFollowing ? theme.text : "#fff" }]}>
-                                    {isFollowing ? "Following" : "Follow"}
-                                </Text>
-                            </Pressable>
-                        )}
+                        <Pressable
+                            style={[
+                                styles.followButton,
+                                isFollowing
+                                    ? { borderWidth: 1, borderColor: theme.iconColor }
+                                    : { backgroundColor: "#007AFF" },
+                            ]}
+                            onPress={handleFollowToggle}
+                        >
+                            <Text style={[styles.followButtonText, { color: isFollowing ? theme.text : "#fff" }]}>
+                                {isFollowing ? "Following" : "Follow"}
+                            </Text>
+                        </Pressable>
                     </View>
                     <Text style={[styles.meta, { color: theme.iconColor }]}>
                         {followerCount} {followerCount === 1 ? "follower" : "followers"}
@@ -232,7 +229,7 @@ export default function ClubPage() {
                                         ? `📍 ${post.location} · ${new Date(post.startDateTime).toLocaleDateString()}`
                                         : post.body
                                 }
-                                onPress={() => { }}
+                                onPress={() => {}}
                             />
                         ))
                     )}

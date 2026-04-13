@@ -17,6 +17,9 @@ model User {
   password  String
   createdAt DateTime @default(now())
   follows   Follow[]
+  role          String       @default("user")
+  managedOrg    Organization? @relation("OrgManager")
+  clubRequests  ClubRequest[]
 }
 
 model Organization {
@@ -27,6 +30,8 @@ model Organization {
   followers     Follow[]
   events        Event[]
   announcements Announcement[]
+  managerId  Int?    @unique
+  manager    User?   @relation("OrgManager", fields: [managerId], references: [id])
 }
 
 model Follow {
@@ -56,4 +61,15 @@ model Announcement {
   createdAt      DateTime     @default(now())
   organizationId Int
   organization   Organization @relation(fields: [organizationId], references: [id])
+}
+
+model ClubRequest {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  clubName    String
+  description String
+  location    String
+  status      String   @default("pending")
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
 }

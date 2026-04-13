@@ -1,8 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
 
 // Use your computer's local IP (not localhost!) so your phone can reach it
 // Run `ipconfig` (Windows) or `ifconfig` (Mac) to find it
-export const API_URL = "http://172.31.197.85:3000"; // <--- replace with your IP
+export const API_URL = Constants.expoConfig.extra.apiUrl;
 
 const USER_KEY = "loggedInUser";
 
@@ -43,4 +44,15 @@ export const getUser = async () => {
 export const getUserId = async () => {
     const user = await getUser();
     return user ? user.id : null;
+};
+
+
+export const isManager = async () => {
+    const user = await getUser();
+    return user?.role === "manager";
+};
+
+export const getManagedOrg = async () => {
+    const user = await getUser();
+    return user?.managedOrg ?? null;
 };
