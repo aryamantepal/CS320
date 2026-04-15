@@ -5,9 +5,44 @@ import ThemedCard from "../../components/ThemedCard";
 import ThemedView from "../../components/ThemedView.jsx";
 import { getUserId, API_URL } from "../../utils/auth";
 
+// Base colors (announcements)
+const announcementColors = [
+    "#3F51B5", // indigo
+    "#4CAF50", // green
+    "#FF9800", // orange
+    "#E91E63", // pink
+    "#5ba29b", // teal
+    "#9C27B0", // purple
+];
+
+// Lighter versions (events)
+const eventColors = [
+    "#7986CB", // lighter indigo
+    "#81C784", // lighter green
+    "#FFB74D", // lighter orange
+    "#F06292", // lighter pink
+    "#88b6b0", // lighter teal
+    "#BA68C8", // lighter purple
+];
+
 export default function Home() {
     const [feed, setFeed] = useState([]);
     const [loading, setLoading] = useState(true);
+    const getColorForItem = (item) => {
+        const name = item.organization.name || "";
+        
+        // simple hash based on club name
+        let hash = 0;
+        for (let i = 0; i < name.length; i++) {
+            hash = name.charCodeAt(i) + ((hash << 5) - hash);
+        }
+
+        const index = Math.abs(hash) % announcementColors.length;
+
+        return item.type === "event"
+            ? eventColors[index]
+            : announcementColors[index];
+    };
 
     // Re-fetches every time this tab comes into focus,
     // so following a new club immediately appears in the feed.
@@ -62,6 +97,8 @@ export default function Home() {
                                 : item.body
                         }
                         onPress={() => {}}
+                        bannerColor={getColorForItem(item)}
+
                     />
                 ))}
             </ScrollView>

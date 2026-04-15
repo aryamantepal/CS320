@@ -16,6 +16,7 @@ export default function ThemedCard({
     title,
     subtitle,
     clubName,
+    bannerColor,
 }) {
     const colorScheme = useColorScheme();
     const theme = Colors[colorScheme] ?? Colors.light;
@@ -64,7 +65,7 @@ export default function ThemedCard({
                 onPress={onPress}
                 style={({ pressed }) => [
                     styles.card,
-                    { backgroundColor: theme.uiBackground },
+                    { backgroundColor: bannerColor || theme.uiBackground },
                     { opacity: pressed ? 0.5 : 1 },
                     style,
                 ]}
@@ -87,7 +88,7 @@ const styles = StyleSheet.create({
         borderRadius: 16,
         marginBottom: 15,
         overflow: "hidden", // keeps dividers flush to card edges
-        shadowColor: "#000",
+        shadowColor: "#000000",
         shadowOpacity: 0.08,
         shadowRadius: 8,
         shadowOffset: { width: 0, height: 3 },
@@ -120,7 +121,7 @@ const styles = StyleSheet.create({
     // DIVIDERS
     verticalDivider: {
         width: 2,
-        backgroundColor: "#000",
+        backgroundColor: "#000000",
     },
     horizontalDivider: {
         height: 2,
