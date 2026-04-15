@@ -18,6 +18,7 @@ export default function ThemedCard({
     title,
     subtitle,
     clubName,
+    bannerColor,
 }) {
     const colorScheme = useColorScheme();
     const theme = Colors[colorScheme] ?? Colors.light;
@@ -96,7 +97,7 @@ export default function ThemedCard({
                 onPress={onPress}
                 style={({ pressed }) => [
                     styles.card,
-                    { backgroundColor: theme.uiBackground },
+                    { backgroundColor: bannerColor || theme.uiBackground },
                     { opacity: pressed ? 0.5 : 1 },
                     style,
                 ]}
