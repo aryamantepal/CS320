@@ -7,11 +7,11 @@ export const API_URL = Constants.expoConfig.extra.apiUrl;
 
 const USER_KEY = "loggedInUser";
 
-export const registerUser = async (email, password) => {
+export const registerUser = async (email, password, name = null) => {
     const response = await fetch(`${API_URL}/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, ...(name && { name }) }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error);
@@ -55,4 +55,17 @@ export const isManager = async () => {
 export const getManagedOrg = async () => {
     const user = await getUser();
     return user?.managedOrg ?? null;
+};
+
+export const updateUser = async (userId, fields) => {
+    const response = await fetch(`${API_URL}/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    // Update stored user so getUser() returns fresh data
+    await AsyncStorage.setItem(USER_KEY, JSON.stringify(data.user));
+    return data.user;
 };

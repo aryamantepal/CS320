@@ -16,11 +16,11 @@ app.use(express.json());
 // ── AUTH ──────────────────────────────────────────────────────────────────────
 
 app.post("/register", async (req, res) => {
-    const { email, password } = req.body;
+    const { email, password, name } = req.body;
     try {
         const existing = await prisma.user.findUnique({ where: { email } });
         if (existing) return res.status(400).json({ error: "Email already registered" });
-        await prisma.user.create({ data: { email, password } });
+        await prisma.user.create({ data: { email, password, ...(name?.trim() && { name: name.trim() }) } });
         res.json({ success: true });
     } catch (err) {
         console.error(err);
@@ -136,6 +136,19 @@ app.post("/orgs/:orgId/events", async (req, res) => {
     }
 });
 
+// CHANGED: new route — allows a manager to delete an event for their org
+app.delete("/events/:eventId", async (req, res) => {
+    const eventId = parseInt(req.params.eventId);
+    if (isNaN(eventId)) return res.status(400).json({ error: "Invalid event id" });
+    try {
+        await prisma.event.delete({ where: { id: eventId } });
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
 // CHANGED: new route — allows a manager to create an announcement for their org
 app.post("/orgs/:orgId/announcements", async (req, res) => {
     const orgId = parseInt(req.params.orgId);
@@ -156,17 +169,86 @@ app.post("/orgs/:orgId/announcements", async (req, res) => {
     }
 });
 
+// CHANGED: new route — allows a manager to delete an announcement for their org
+app.delete("/announcements/:announcementId", async (req, res) => {
+    const announcementId = parseInt(req.params.announcementId);
+    if (isNaN(announcementId)) return res.status(400).json({ error: "Invalid announcement id" });
+    try {
+        await prisma.announcement.delete({ where: { id: announcementId } });
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
 // CHANGED: new route — allows a manager to update their org's description
 app.patch("/orgs/:orgId", async (req, res) => {
     const orgId = parseInt(req.params.orgId);
     if (isNaN(orgId)) return res.status(400).json({ error: "Invalid org id" });
-    const { description } = req.body;
+    const { description, name, imageUrl } = req.body;
     try {
         const org = await prisma.organization.update({
             where: { id: orgId },
-            data: { description },
+            data: {
+                ...(description !== undefined && { description }),
+                ...(name !== undefined && { name }),
+                ...(imageUrl !== undefined && { imageUrl }),
+            },
+            include: { _count: { select: { followers: true } } },
         });
         res.json(org);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// CHANGED: update user profile info (name, imageUrl)
+app.patch("/users/:userId", async (req, res) => {
+    const userId = parseInt(req.params.userId);
+    const { imageUrl, name } = req.body;
+    try {
+        const user = await prisma.user.update({
+            where: { id: userId },
+            data: {
+                ...(name !== undefined && { name }),
+                ...(imageUrl !== undefined && { imageUrl }),
+            },
+            select: {
+                id: true,
+                email: true,
+                name: true,
+                role: true,
+                imageUrl: true,
+                managedOrg: { select: { id: true, name: true, description: true } },
+            },
+        });
+        // CHANGED: update AsyncStorage with new user data so app reflects changes immediately
+        res.json({ success: true, user });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// CHANGED: update user password
+app.patch("/users/:userId/password", async (req, res) => {
+    const userId = parseInt(req.params.userId);
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: "Both current and new password are required" });
+    }
+    if (newPassword.length < 6) {
+        return res.status(400).json({ error: "New password must be at least 6 characters" });
+    }
+    try {
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        if (!user || user.password !== currentPassword) {
+            return res.status(401).json({ error: "Current password is incorrect" });
+        }
+        await prisma.user.update({ where: { id: userId }, data: { password: newPassword } });
+        res.json({ success: true });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: "Server error" });

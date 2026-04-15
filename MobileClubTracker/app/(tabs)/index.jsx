@@ -1,9 +1,10 @@
 import React, { useState, useCallback } from "react";
 import { ScrollView, ActivityIndicator, Text } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import ThemedCard from "../../components/ThemedCard";
 import ThemedView from "../../components/ThemedView.jsx";
 import { getUserId, API_URL } from "../../utils/auth";
+import { addEventToCalendar } from "../../utils/calendar";
 
 // Base colors (announcements)
 const announcementColors = [
@@ -26,6 +27,8 @@ const eventColors = [
 ];
 
 export default function Home() {
+    const router = useRouter();
+
     const [feed, setFeed] = useState([]);
     const [loading, setLoading] = useState(true);
     const getColorForItem = (item) => {
@@ -96,9 +99,33 @@ export default function Home() {
                                 ? `📍 ${item.location} · ${new Date(item.startDateTime).toLocaleDateString()}`
                                 : item.body
                         }
-                        onPress={() => {}}
                         bannerColor={getColorForItem(item)}
 
+                        onPress={() =>
+                            router.push({
+                                pathname: "/postDetail",
+                                params: {
+                                    type: item.type,
+                                    title: item.title,
+                                    body: item.body ?? "",
+                                    location: item.location ?? "",
+                                    startDateTime: item.startDateTime ? String(item.startDateTime) : "",
+                                    clubName: item.organization.name,
+                                },
+                            })
+                        }
+                        // Only pass onAddToCalendar for events
+                        onAddToCalendar={
+                            item.type === "event"
+                                ? () =>
+                                    addEventToCalendar({
+                                        title: item.title,
+                                        location: item.location,
+                                        startDateTime: item.startDateTime,
+                                        clubName: item.organization.name,
+                                    })
+                                : undefined
+                        }
                     />
                 ))}
             </ScrollView>
