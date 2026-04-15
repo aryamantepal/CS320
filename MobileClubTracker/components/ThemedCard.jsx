@@ -12,6 +12,8 @@ import { Colors } from "../constants/Colors";
 export default function ThemedCard({
     style,
     onPress,
+    onDelete,
+    onAddToCalendar,   // ← NEW: only passed for event-type cards
     image,
     title,
     subtitle,
@@ -20,10 +22,12 @@ export default function ThemedCard({
     const colorScheme = useColorScheme();
     const theme = Colors[colorScheme] ?? Colors.light;
 
+    const dividerColor =
+        colorScheme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.09)";
+
     const content = (
         <View style={styles.row}>
-
-            {/* LEFT COLUMN: image + club name */}
+            {/* LEFT COLUMN */}
             <View style={styles.leftColumn}>
                 <Image
                     source={
@@ -34,27 +38,55 @@ export default function ThemedCard({
                     style={styles.avatar}
                 />
                 {clubName && (
-                    <Text style={styles.clubName}>{clubName}</Text>
+                    <Text style={[styles.clubName, { color: theme.text }]}>
+                        {clubName}
+                    </Text>
                 )}
             </View>
 
             {/* VERTICAL DIVIDER */}
-            <View style={styles.verticalDivider} />
+            <View style={[styles.verticalDivider, { backgroundColor: dividerColor }]} />
 
-            {/* RIGHT COLUMN: title + horizontal divider + subtitle */}
+            {/* RIGHT COLUMN */}
             <View style={styles.rightColumn}>
                 {title && (
-                    <Text style={styles.title}>{title}</Text>
+                    <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
                 )}
 
-                {/* HORIZONTAL DIVIDER */}
-                <View style={styles.horizontalDivider} />
+                <View style={[styles.horizontalDivider, { backgroundColor: dividerColor }]} />
 
                 {subtitle && (
                     <Text style={styles.subtitle}>{subtitle}</Text>
                 )}
+
+                {/* CALENDAR BUTTON — only shows for events */}
+                {onAddToCalendar && (
+                    <Pressable
+                        onPress={(e) => {
+                            // Stop press from bubbling up to the card's onPress
+                            e.stopPropagation?.();
+                            onAddToCalendar();
+                        }}
+                        style={({ pressed }) => [
+                            styles.calendarButton,
+                            { opacity: pressed ? 0.6 : 1 },
+                        ]}
+                    >
+                        <Text style={styles.calendarButtonText}>📅 Add to Calendar</Text>
+                    </Pressable>
+                )}
             </View>
 
+            {/* DELETE BUTTON */}
+            {onDelete && (
+                <Pressable
+                    onPress={onDelete}
+                    hitSlop={10}
+                    style={styles.deleteButton}
+                >
+                    <Text style={styles.deleteIcon}>✕</Text>
+                </Pressable>
+            )}
         </View>
     );
 
@@ -86,7 +118,7 @@ const styles = StyleSheet.create({
         width: "95%",
         borderRadius: 16,
         marginBottom: 15,
-        overflow: "hidden", // keeps dividers flush to card edges
+        overflow: "hidden",
         shadowColor: "#000",
         shadowOpacity: 0.08,
         shadowRadius: 8,
@@ -97,8 +129,6 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         minHeight: 160,
     },
-
-    // LEFT
     leftColumn: {
         width: "35%",
         alignItems: "center",
@@ -116,19 +146,12 @@ const styles = StyleSheet.create({
         fontSize: 13,
         textAlign: "center",
     },
-
-    // DIVIDERS
     verticalDivider: {
         width: 2,
-        backgroundColor: "#000",
     },
     horizontalDivider: {
         height: 2,
-        backgroundColor: "#000",
-        marginVertical: 0,
     },
-
-    // RIGHT
     rightColumn: {
         flex: 1,
         flexDirection: "column",
@@ -143,6 +166,31 @@ const styles = StyleSheet.create({
         fontSize: 13,
         color: "gray",
         padding: 12,
-        flex: 1,
+    },
+    calendarButton: {
+        alignSelf: "flex-start",
+        marginHorizontal: 12,
+        marginBottom: 10,
+        marginTop: 4,
+        paddingVertical: 5,
+        paddingHorizontal: 10,
+        borderRadius: 20,
+        backgroundColor: "#007AFF18",  // very subtle tinted background
+    },
+    calendarButtonText: {
+        fontSize: 12,
+        fontWeight: "600",
+        color: "#007AFF",
+    },
+    deleteButton: {
+        position: "absolute",
+        top: 8,
+        right: 10,
+        padding: 4,
+    },
+    deleteIcon: {
+        fontSize: 15,
+        color: "#FF3B30",
+        fontWeight: "700",
     },
 });

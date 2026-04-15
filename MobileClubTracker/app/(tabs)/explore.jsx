@@ -13,7 +13,8 @@ import { Colors } from "../../constants/Colors";
 import ThemedView from "../../components/ThemedView";
 import SearchBar from "../../components/SearchBar";
 import ClubCard, { NUM_COLUMNS, TILE_MARGIN, CONTAINER_PADDING } from "../../components/ClubCard";
-import { API_URL } from "../../utils/auth";
+// CHANGED: import getManagedOrg to filter out the manager's own club
+import { API_URL, getManagedOrg } from "../../utils/auth";
 
 export default function Explore() {
     const router = useRouter();
@@ -24,14 +25,22 @@ export default function Explore() {
     const [orgs, setOrgs] = useState([]);
     const [loading, setLoading] = useState(true);
 
+    // CHANGED: track the manager's own org id so we can filter it out
+    const [managedOrgId, setManagedOrgId] = useState(null);
+
     useFocusEffect(
         useCallback(() => {
             const loadOrgs = async () => {
                 setLoading(true);
                 try {
-                    const res = await fetch(`${API_URL}/orgs`);
+                    // CHANGED: fetch managed org alongside clubs
+                    const [res, managedOrg] = await Promise.all([
+                        fetch(`${API_URL}/orgs`),
+                        getManagedOrg(),
+                    ]);
                     const data = await res.json();
                     setOrgs(Array.isArray(data) ? data : []);
+                    setManagedOrgId(managedOrg?.id ?? null);
                 } catch (err) {
                     console.error("Failed to load orgs:", err);
                 } finally {
@@ -42,9 +51,15 @@ export default function Explore() {
         }, [])
     );
 
-    const filteredOrgs = orgs.filter((org) =>
-        org.name.toLowerCase().includes(query.toLowerCase())
-    );
+    // CHANGED: filter out search query AND the manager's own club
+    const filteredOrgs = orgs.filter((org) => {
+        if (org.id === managedOrgId) return false;
+        const q = query.toLowerCase();
+        return (
+            org.name.toLowerCase().includes(q) ||
+            (org.description ?? "").toLowerCase().includes(q)
+        );
+    });
 
     if (loading) {
         return (
@@ -78,7 +93,7 @@ export default function Explore() {
                             club={{
                                 name: item.name,
                                 followers: item._count?.followers ?? 0,
-                                profilePicture: null,
+                                profilePicture: item.imageUrl ?? null,
                             }}
                             onPress={() =>
                                 router.push({

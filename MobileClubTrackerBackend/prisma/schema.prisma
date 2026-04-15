@@ -15,6 +15,7 @@ model User {
   name      String?
   email     String   @unique
   password  String
+  imageUrl  String?
   createdAt DateTime @default(now())
   follows   Follow[]
   role          String       @default("user")
@@ -26,6 +27,7 @@ model Organization {
   id            Int            @id @default(autoincrement())
   name          String         @unique
   description   String?
+  imageUrl      String?
   createdAt     DateTime       @default(now())
   followers     Follow[]
   events        Event[]

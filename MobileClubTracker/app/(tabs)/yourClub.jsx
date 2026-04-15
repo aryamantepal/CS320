@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from "react";
+// CHANGED: yourClub.jsx is now the full manager dashboard —
+// edit club name, description, image URL, and create events/announcements
+import React, { useState, useCallback } from "react";
 import {
     View,
     Text,
@@ -11,112 +13,110 @@ import {
     ActivityIndicator,
     TextInput,
     Modal,
-    // CHANGED: added KeyboardAvoidingView and Platform for the create post modal
     KeyboardAvoidingView,
     Platform,
+    Alert,
 } from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { Colors } from "../../constants/Colors";
+import { getManagedOrg, API_URL } from "../../utils/auth";
 import ThemedView from "../../components/ThemedView";
 import ThemedCard from "../../components/ThemedCard";
-// CHANGED: import getManagedOrg to check if this club belongs to the logged-in manager
-import { API_URL, getUserId, getManagedOrg } from "../../utils/auth";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const BANNER_HEIGHT = 160;
 const AVATAR_SIZE = 90;
 
-export default function ClubPage() {
-    const router = useRouter();
+export default function YourClub() {
     const colorScheme = useColorScheme();
     const theme = Colors[colorScheme] ?? Colors.light;
 
-    const { id, name } = useLocalSearchParams();
-    const orgId = parseInt(id);
-
+    const [org, setOrg] = useState(null);
     const [posts, setPosts] = useState([]);
-    const [isFollowing, setIsFollowing] = useState(false);
-    const [followerCount, setFollowerCount] = useState(0);
     const [loading, setLoading] = useState(true);
-    const [userId, setUserId] = useState(null);
 
-    // CHANGED: track whether the logged-in user manages THIS club
-    const [isMyClub, setIsMyClub] = useState(false);
+    // ── Edit club info state ──
+    const [editName, setEditName] = useState("");
+    const [editDescription, setEditDescription] = useState("");
+    const [editImageUrl, setEditImageUrl] = useState("");
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [savingInfo, setSavingInfo] = useState(false);
 
-    // CHANGED: modal state — which modal is open: null | "event" | "announcement"
-    const [modalType, setModalType] = useState(null);
-
-    // CHANGED: form fields for creating a post
+    // ── Create post state ──
+    const [modalType, setModalType] = useState(null); // null | "event" | "announcement"
     const [postTitle, setPostTitle] = useState("");
-    const [postBody, setPostBody] = useState("");       // used for announcement body
-    const [postLocation, setPostLocation] = useState(""); // used for event location
-    const [postDate, setPostDate] = useState("");         // used for event date (YYYY-MM-DD)
+    const [postBody, setPostBody] = useState("");
+    const [postLocation, setPostLocation] = useState("");
+    const [postDate, setPostDate] = useState("");
     const [submitting, setSubmitting] = useState(false);
 
-    useEffect(() => {
-        const loadData = async () => {
-            const uid = await getUserId();
-            setUserId(uid);
+    useFocusEffect(
+        useCallback(() => {
+            const loadClub = async () => {
+                setLoading(true);
+                try {
+                    const managedOrg = await getManagedOrg();
+                    if (!managedOrg) { setLoading(false); return; }
 
-            // CHANGED: check if the logged-in manager owns this club
-            const managedOrg = await getManagedOrg();
-            if (managedOrg && managedOrg.id === orgId) {
-                setIsMyClub(true);
-            }
+                    const [orgRes, postsRes] = await Promise.all([
+                        fetch(`${API_URL}/orgs/${managedOrg.id}`),
+                        fetch(`${API_URL}/orgs/${managedOrg.id}/posts`),
+                    ]);
+                    const orgData = await orgRes.json();
+                    const postsData = await postsRes.json();
 
-            try {
-                const [postsRes, followsRes, orgRes] = await Promise.all([
-                    fetch(`${API_URL}/orgs/${orgId}/posts`),
-                    fetch(`${API_URL}/follows/${uid}`),
-                    fetch(`${API_URL}/orgs/${orgId}`),
-                ]);
-                const postsData = await postsRes.json();
-                const followedOrgIds = await followsRes.json();
-                const orgData = await orgRes.json();
-                setPosts(Array.isArray(postsData) ? postsData : []);
-                setIsFollowing(Array.isArray(followedOrgIds) && followedOrgIds.includes(orgId));
-                setFollowerCount(orgData._count?.followers ?? 0);
-            } catch (err) {
-                console.error("Failed to load club data:", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        loadData();
-    }, [orgId]);
+                    setOrg(orgData);
+                    setEditName(orgData.name ?? "");
+                    setEditDescription(orgData.description ?? "");
+                    setEditImageUrl(orgData.imageUrl ?? "");
+                    setPosts(Array.isArray(postsData) ? postsData : []);
+                } catch (err) {
+                    console.error("Failed to load managed club:", err);
+                } finally {
+                    setLoading(false);
+                }
+            };
+            loadClub();
+        }, [])
+    );
 
-    const handleFollowToggle = async () => {
+    // Save club name, description, and image URL
+    const handleSaveClubInfo = async () => {
+        if (!editName.trim()) return Alert.alert("Error", "Club name cannot be empty");
+        setSavingInfo(true);
         try {
-            if (isFollowing) {
-                await fetch(`${API_URL}/follow`, {
-                    method: "DELETE",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ userId, organizationId: orgId }),
-                });
-            } else {
-                await fetch(`${API_URL}/follow`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ userId, organizationId: orgId }),
-                });
-            }
-            setIsFollowing(!isFollowing);
-            setFollowerCount((c) => isFollowing ? c - 1 : c + 1);
+            await fetch(`${API_URL}/orgs/${org.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: editName.trim(),
+                    description: editDescription.trim(),
+                    imageUrl: editImageUrl.trim() || null,
+                }),
+            });
+            // Refresh org data
+            const res = await fetch(`${API_URL}/orgs/${org.id}`);
+            const updated = await res.json();
+            setOrg(updated);
+            setShowEditModal(false);
+            Alert.alert("Saved!", "Club info updated successfully.");
         } catch (err) {
-            console.error("Follow toggle failed:", err);
+            console.error("Failed to save club info:", err);
+            Alert.alert("Error", "Could not save. Try again.");
+        } finally {
+            setSavingInfo(false);
         }
     };
 
-    // CHANGED: handles submitting a new event or announcement to the backend
+    // Submit a new event or announcement
     const handleSubmitPost = async () => {
-        if (!postTitle.trim()) return alert("Title is required");
-
+        if (!postTitle.trim()) return Alert.alert("Error", "Title is required");
         setSubmitting(true);
         try {
             if (modalType === "event") {
-                if (!postLocation.trim()) return alert("Location is required");
-                if (!postDate.trim()) return alert("Date is required");
-                await fetch(`${API_URL}/orgs/${orgId}/events`, {
+                if (!postLocation.trim()) return Alert.alert("Error", "Location is required");
+                if (!postDate.trim()) return Alert.alert("Error", "Date is required");
+                await fetch(`${API_URL}/orgs/${org.id}/events`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -126,20 +126,20 @@ export default function ClubPage() {
                     }),
                 });
             } else {
-                if (!postBody.trim()) return alert("Body is required");
-                await fetch(`${API_URL}/orgs/${orgId}/announcements`, {
+                if (!postBody.trim()) return Alert.alert("Error", "Body is required");
+                await fetch(`${API_URL}/orgs/${org.id}/announcements`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ title: postTitle, body: postBody }),
                 });
             }
 
-            // Refresh posts after creating
-            const res = await fetch(`${API_URL}/orgs/${orgId}/posts`);
+            // Refresh posts
+            const res = await fetch(`${API_URL}/orgs/${org.id}/posts`);
             const data = await res.json();
             setPosts(Array.isArray(data) ? data : []);
 
-            // Reset and close modal
+            // Reset form and close modal
             setPostTitle("");
             setPostBody("");
             setPostLocation("");
@@ -147,16 +147,56 @@ export default function ClubPage() {
             setModalType(null);
         } catch (err) {
             console.error("Failed to create post:", err);
-            alert("Something went wrong. Try again.");
+            Alert.alert("Error", "Something went wrong. Try again.");
         } finally {
             setSubmitting(false);
         }
+    };
+
+    const handleDeletePost = async (postType, postId) => {
+        Alert.alert(
+            "Delete Post",
+            "Are you sure you want to delete this post? This cannot be undone.",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            const endpoint =
+                                postType === "event"
+                                    ? `${API_URL}/events/${postId}`
+                                    : `${API_URL}/announcements/${postId}`;
+                            const res = await fetch(endpoint, { method: "DELETE" });
+                            if (!res.ok) throw new Error("Delete failed");
+                            // Remove from local state immediately — no need to re-fetch
+                            setPosts((prev) =>
+                                prev.filter((p) => !(p.id === postId && p.type === postType))
+                            );
+                        } catch (err) {
+                            Alert.alert("Error", "Could not delete post. Try again.");
+                        }
+                    },
+                },
+            ]
+        );
     };
 
     if (loading) {
         return (
             <ThemedView safe={true} style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
                 <ActivityIndicator size="large" />
+            </ThemedView>
+        );
+    }
+
+    if (!org) {
+        return (
+            <ThemedView safe={true} style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24 }}>
+                <Text style={{ color: theme.text, fontSize: 16, textAlign: "center" }}>
+                    You are not managing any club.
+                </Text>
             </ThemedView>
         );
     }
@@ -171,18 +211,13 @@ export default function ClubPage() {
                 {/* ── HEADER: Banner + Avatar ── */}
                 <View style={styles.headerContainer}>
                     <Image
-                        source={require("../../assets/adaptive-icon.png")}
+                        source={org.imageUrl ? { uri: org.imageUrl } : require("../../assets/adaptive-icon.png")}
                         style={styles.banner}
                         resizeMode="cover"
                     />
-
-                    <Pressable style={styles.backButton} onPress={() => router.back()}>
-                        <Text style={styles.backButtonText}>‹</Text>
-                    </Pressable>
-
                     <View style={styles.avatarWrapper}>
                         <Image
-                            source={require("../../assets/adaptive-icon.png")}
+                            source={org.imageUrl ? { uri: org.imageUrl } : require("../../assets/adaptive-icon.png")}
                             style={[styles.avatar, { borderColor: theme.background }]}
                         />
                     </View>
@@ -191,70 +226,137 @@ export default function ClubPage() {
                 {/* ── CLUB INFO ── */}
                 <View style={[styles.infoSection, { backgroundColor: theme.uiBackground }]}>
                     <View style={styles.nameRow}>
-                        <Text style={[styles.name, { color: theme.text }]}>{name}</Text>
-
-                        <Pressable
-                            style={[
-                                styles.followButton,
-                                isFollowing
-                                    ? { borderWidth: 1, borderColor: theme.iconColor }
-                                    : { backgroundColor: "#007AFF" },
-                            ]}
-                            onPress={handleFollowToggle}
-                        >
-                            <Text style={[styles.followButtonText, { color: isFollowing ? theme.text : "#fff" }]}>
-                                {isFollowing ? "Following" : "Follow"}
+                        <View style={{ flex: 1 }}>
+                            <Text style={[styles.clubName, { color: theme.text }]}>{org.name}</Text>
+                            <Text style={[styles.meta, { color: theme.iconColor }]}>
+                                {org._count?.followers ?? 0} followers
                             </Text>
+                        </View>
+                        {/* Edit club info button */}
+                        <Pressable
+                            style={[styles.editButton, { borderColor: theme.iconColor }]}
+                            onPress={() => setShowEditModal(true)}
+                        >
+                            <Text style={{ color: theme.text, fontSize: 13, fontWeight: "600" }}>✏️ Edit</Text>
                         </Pressable>
                     </View>
-                    <Text style={[styles.meta, { color: theme.iconColor }]}>
-                        {followerCount} {followerCount === 1 ? "follower" : "followers"}
-                    </Text>
+                    {org.description ? (
+                        <Text style={[styles.description, { color: theme.text }]}>{org.description}</Text>
+                    ) : (
+                        <Text style={[styles.description, { color: theme.iconColor, fontStyle: "italic" }]}>
+                            No description yet. Tap Edit to add one.
+                        </Text>
+                    )}
+                </View>
+
+                {/* ── CREATE POST BUTTONS ── */}
+                <View style={styles.actionsRow}>
+                    <Pressable
+                        style={[styles.actionBtn, { backgroundColor: "#007AFF" }]}
+                        onPress={() => setModalType("event")}
+                    >
+                        <Text style={styles.actionBtnText}>+ Event</Text>
+                    </Pressable>
+                    <Pressable
+                        style={[styles.actionBtn, { backgroundColor: "#34C759" }]}
+                        onPress={() => setModalType("announcement")}
+                    >
+                        <Text style={styles.actionBtnText}>+ Announcement</Text>
+                    </Pressable>
                 </View>
 
                 {/* ── POSTS ── */}
-                <View style={styles.sectionContainer}>
-                    <Text style={[styles.sectionTitle, { color: theme.text }]}>Posts</Text>
-
+                <View style={styles.postsSection}>
+                    <Text style={[styles.sectionTitle, { color: theme.text }]}>Your Posts</Text>
                     {posts.length === 0 ? (
-                        <Text style={[styles.emptyText, { color: theme.iconColor }]}>No posts yet.</Text>
+                        <Text style={[styles.emptyText, { color: theme.iconColor }]}>
+                            No posts yet. Create your first event or announcement above!
+                        </Text>
                     ) : (
                         posts.map((post) => (
                             <ThemedCard
                                 key={`${post.type}-${post.id}`}
-                                clubName={name}
+                                clubName={org.name}
                                 title={post.title}
                                 subtitle={
                                     post.type === "event"
                                         ? `📍 ${post.location} · ${new Date(post.startDateTime).toLocaleDateString()}`
                                         : post.body
                                 }
-                                onPress={() => {}}
+                                onPress={() => { }}   // managers viewing their own posts — no detail nav needed
+                                onDelete={() => handleDeletePost(post.type, post.id)}
                             />
                         ))
                     )}
                 </View>
             </ScrollView>
 
-            {/* CHANGED: floating manager buttons — only visible if this is the manager's club */}
-            {isMyClub && (
-                <View style={styles.fabContainer}>
-                    <Pressable
-                        style={[styles.fab, { backgroundColor: "#34C759" }]}
-                        onPress={() => setModalType("announcement")}
-                    >
-                        <Text style={styles.fabText}>+ Announcement</Text>
-                    </Pressable>
-                    <Pressable
-                        style={[styles.fab, { backgroundColor: "#007AFF" }]}
-                        onPress={() => setModalType("event")}
-                    >
-                        <Text style={styles.fabText}>+ Event</Text>
-                    </Pressable>
-                </View>
-            )}
+            {/* ── EDIT CLUB INFO MODAL ── */}
+            <Modal
+                visible={showEditModal}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setShowEditModal(false)}
+            >
+                <KeyboardAvoidingView
+                    style={styles.modalOverlay}
+                    behavior={Platform.OS === "ios" ? "padding" : undefined}
+                >
+                    <View style={[styles.modalBox, { backgroundColor: theme.uiBackground }]}>
+                        <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Club Info</Text>
 
-            {/* CHANGED: modal for creating an event or announcement */}
+                        <Text style={[styles.fieldLabel, { color: theme.iconColor }]}>Club Name</Text>
+                        <TextInput
+                            value={editName}
+                            onChangeText={setEditName}
+                            placeholder="Club Name"
+                            placeholderTextColor={theme.iconColor}
+                            style={[styles.input, { borderColor: theme.iconColor, color: theme.text }]}
+                        />
+
+                        <Text style={[styles.fieldLabel, { color: theme.iconColor }]}>Description</Text>
+                        <TextInput
+                            value={editDescription}
+                            onChangeText={setEditDescription}
+                            placeholder="Describe your club..."
+                            placeholderTextColor={theme.iconColor}
+                            multiline
+                            numberOfLines={3}
+                            style={[styles.input, styles.textArea, { borderColor: theme.iconColor, color: theme.text }]}
+                        />
+
+                        <Text style={[styles.fieldLabel, { color: theme.iconColor }]}>Profile Image URL</Text>
+                        <TextInput
+                            value={editImageUrl}
+                            onChangeText={setEditImageUrl}
+                            placeholder="https://example.com/image.png"
+                            placeholderTextColor={theme.iconColor}
+                            autoCapitalize="none"
+                            style={[styles.input, { borderColor: theme.iconColor, color: theme.text }]}
+                        />
+
+                        <View style={styles.modalButtons}>
+                            <Pressable
+                                style={[styles.modalBtn, { borderColor: theme.iconColor, borderWidth: 1 }]}
+                                onPress={() => setShowEditModal(false)}
+                            >
+                                <Text style={{ color: theme.text }}>Cancel</Text>
+                            </Pressable>
+                            <Pressable
+                                style={[styles.modalBtn, { backgroundColor: "#007AFF" }]}
+                                onPress={handleSaveClubInfo}
+                                disabled={savingInfo}
+                            >
+                                <Text style={{ color: "#fff", fontWeight: "600" }}>
+                                    {savingInfo ? "Saving..." : "Save"}
+                                </Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                </KeyboardAvoidingView>
+            </Modal>
+
+            {/* ── CREATE POST MODAL ── */}
             <Modal
                 visible={modalType !== null}
                 animationType="slide"
@@ -335,70 +437,26 @@ const styles = StyleSheet.create({
     scrollContent: { paddingBottom: 120 },
     headerContainer: { marginBottom: AVATAR_SIZE / 2 },
     banner: { width: SCREEN_WIDTH, height: BANNER_HEIGHT },
-    backButton: {
-        position: "absolute",
-        top: 16,
-        left: 16,
-        backgroundColor: "rgba(0,0,0,0.4)",
-        borderRadius: 20,
-        width: 36,
-        height: 36,
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    backButtonText: { color: "#fff", fontSize: 24, lineHeight: 28 },
     avatarWrapper: { position: "absolute", bottom: -(AVATAR_SIZE / 2), left: 16 },
     avatar: { width: AVATAR_SIZE, height: AVATAR_SIZE, borderRadius: AVATAR_SIZE / 2, borderWidth: 4 },
     infoSection: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16, marginBottom: 8 },
-    nameRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
-    name: { fontSize: 22, fontWeight: "700", flex: 1, marginRight: 12 },
-    followButton: { borderRadius: 20, paddingVertical: 7, paddingHorizontal: 18 },
-    followButtonText: { fontSize: 14, fontWeight: "600" },
-    meta: { fontSize: 13, marginTop: 4, marginBottom: 4 },
-    sectionContainer: { paddingHorizontal: 16, marginBottom: 8 },
-    sectionTitle: { fontSize: 17, fontWeight: "700", marginBottom: 10, marginTop: 8 },
+    nameRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
+    clubName: { fontSize: 22, fontWeight: "700" },
+    meta: { fontSize: 13, marginTop: 2 },
+    editButton: { borderWidth: 1, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14 },
+    description: { fontSize: 14, lineHeight: 20, marginTop: 8 },
+    actionsRow: { flexDirection: "row", gap: 10, paddingHorizontal: 16, marginBottom: 16 },
+    actionBtn: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: "center" },
+    actionBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+    postsSection: { paddingHorizontal: 16 },
+    sectionTitle: { fontSize: 17, fontWeight: "700", marginBottom: 10 },
     emptyText: { fontSize: 14, fontStyle: "italic" },
-
-    // CHANGED: styles for the floating action buttons
-    fabContainer: {
-        position: "absolute",
-        bottom: 30,
-        right: 16,
-        gap: 10,
-        alignItems: "flex-end",
-    },
-    fab: {
-        borderRadius: 24,
-        paddingVertical: 12,
-        paddingHorizontal: 20,
-        shadowColor: "#000",
-        shadowOpacity: 0.2,
-        shadowRadius: 6,
-        shadowOffset: { width: 0, height: 3 },
-        elevation: 5,
-    },
-    fabText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-
-    // CHANGED: styles for the create post modal
-    modalOverlay: {
-        flex: 1,
-        justifyContent: "flex-end",
-        backgroundColor: "rgba(0,0,0,0.4)",
-    },
-    modalBox: {
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20,
-        padding: 24,
-        gap: 12,
-    },
-    modalTitle: { fontSize: 20, fontWeight: "700", marginBottom: 8 },
-    input: {
-        borderWidth: 1,
-        borderRadius: 10,
-        padding: 12,
-        fontSize: 15,
-    },
-    textArea: { height: 100, textAlignVertical: "top" },
+    modalOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
+    modalBox: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, gap: 10 },
+    modalTitle: { fontSize: 20, fontWeight: "700", marginBottom: 4 },
+    fieldLabel: { fontSize: 12, fontWeight: "600", marginBottom: -4 },
+    input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 },
+    textArea: { height: 90, textAlignVertical: "top" },
     modalButtons: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 8 },
     modalBtn: { borderRadius: 10, paddingVertical: 10, paddingHorizontal: 20 },
 });
