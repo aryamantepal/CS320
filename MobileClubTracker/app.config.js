@@ -13,7 +13,13 @@ export default {
       resizeMode: "contain",
       backgroundColor: "#ffffff"
     },
-    ios: { supportsTablet: true },
+    ios: { 
+        supportsTablet: true ,
+        infoPlist: {
+            NSCalendarUsageDescription:
+                "Club Tracker uses your calendar to save event dates so you never miss a club event.",
+        },
+    },
     android: {
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon.png",
@@ -22,7 +28,10 @@ export default {
       edgeToEdgeEnabled: true
     },
     web: { favicon: "./assets/favicon.png" },
-    plugins: ["expo-router"],
+    plugins: [
+        "expo-router",
+        "expo-calendar"
+    ],
     extra: {
       apiUrl: process.env.API_URL  // ← no quotes, reads from .env
     },

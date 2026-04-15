@@ -23,6 +23,7 @@ export default function Register() {
     const theme = Colors[colorScheme] ?? Colors.light;
 
     const [email, setEmail] = useState("");
+    const [name, setName] = useState("");
     const [password, setPassword] = useState("");
 
     const isValidEmail = (email) => {
@@ -40,7 +41,7 @@ export default function Register() {
             return;
         }
         try {
-            await registerUser(email, password);
+            await registerUser(email, password, name.trim() || null); // name is optional
             await loginUser(email, password);
             router.replace("/(tabs)");
         } catch (err) {
@@ -63,6 +64,20 @@ export default function Register() {
                     <Text style={[styles.title, { color: theme.title }]}>
                         Create Account
                     </Text>
+
+                    {/* Name Input (optional) */}
+                    <TextInput
+                        placeholder="Name (optional)"
+                        placeholderTextColor={theme.iconColor}
+                        value={name}
+                        onChangeText={setName}
+                        autoCapitalize="words"
+                        style={[styles.input, {
+                            borderColor: theme.iconColor,
+                            color: theme.text,
+                            backgroundColor: theme.uiBackground,
+                        }]}
+                    />
 
                     {/* Email Input */}
                     <TextInput
