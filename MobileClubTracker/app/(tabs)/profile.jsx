@@ -19,6 +19,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Colors } from "../../constants/Colors";
 import { logoutUser, getUser, getManagedOrg, API_URL, updateUser } from "../../utils/auth";
 import ThemedView from "../../components/ThemedView.jsx";
+import { registerForPushNotifications } from "../../utils/notifications";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const BANNER_HEIGHT = 140;
@@ -27,7 +28,8 @@ const AVATAR_SIZE = 90;
 export default function Profile() {
     const router = useRouter();
     const colorScheme = useColorScheme();
-    const theme = Colors[colorScheme] ?? Colors.light;
+    const [isDarkMode, setIsDarkMode] = useState(colorScheme === "dark");
+    const theme = Colors[isDarkMode ? "dark" : "light"] ?? Colors.light;
 
     const [user, setUser] = useState(null);
     const [followedOrgs, setFollowedOrgs] = useState([]);
@@ -161,7 +163,7 @@ export default function Profile() {
     }
 
     return (
-        <ThemedView safe={true} style={{ flex: 1 }}>
+        <ThemedView safe={true} style={{ flex: 1, backgfroundColor: theme.background }}>
             <ScrollView
                 style={{ backgroundColor: "transparent" }}
                 contentContainerStyle={styles.scrollContent}
@@ -196,7 +198,7 @@ export default function Profile() {
                     )}
                     {/* CHANGED: Edit Profile now opens the modal */}
                     <Pressable
-                        style={[styles.editButton, { borderColor: theme.iconColor }]}
+                        style={[styles.editButton, { borderColor: theme.iconColor, backgroundColor: theme.uiBackground }]}
                         onPress={handleOpenEditModal}
                     >
                         <Text style={[styles.editButtonText, { color: theme.text }]}>Edit Profile</Text>
@@ -274,12 +276,26 @@ export default function Profile() {
                     <Text style={[styles.sectionTitle, { color: theme.text }]}>Account Settings</Text>
                     {[
                         {
+                            label: "Dark Mode",
+                            onPress: () => setIsDarkMode((v) => !v),
+                        },
+                        {
                             label: "Change Password",
                             onPress: () => setShowPasswordModal(true),
                         },
+
                         {
                             label: `Notifications   ${notificationsEnabled ? "🔔 On" : "🔕 Off"}`,
-                            onPress: () => setNotificationsEnabled((v) => !v),
+                            onPress: async () => {
+                                if (!notificationsEnabled) {
+                                    const token = await registerForPushNotifications(user.id);
+                                    if (token) setNotificationsEnabled(true);
+                                    // if they denied permission, token is null and toggle stays off
+                                } else {
+                                    // Optionally: tell server to delete the token
+                                    setNotificationsEnabled(false);
+                                }
+                            },
                         },
                         {
                             label: `Privacy   ${privateProfile ? "🔒 Private" : "🌐 Public"}`,

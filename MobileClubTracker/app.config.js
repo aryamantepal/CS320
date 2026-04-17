@@ -30,10 +30,15 @@ export default {
     web: { favicon: "./assets/favicon.png" },
     plugins: [
         "expo-router",
-        "expo-calendar"
+        "expo-calendar",
+        "expo-notifications"
     ],
     extra: {
-      apiUrl: process.env.API_URL  // ← no quotes, reads from .env
+      apiUrl: process.env.API_URL,  // ← no quotes, reads from .env
+      eas: {
+        projectId:  "40c1c2fe-51da-499c-a2d0-452f67e2b216" // ← no quotes, reads from .env
+      }
     },
+    owner: "mirziya" // ← no quotes, reads from .env
   },
 };
