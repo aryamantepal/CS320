@@ -175,7 +175,7 @@ export default function Profile() {
     }
 
     return (
-        <ThemedView safe={true} style={{ flex: 1, backgfroundColor: theme.background }}>
+        <ThemedView safe={true} style={{ flex: 1, backgroundColor: theme.background }}>
             <ScrollView
                 style={{ backgroundColor: "transparent" }}
                 contentContainerStyle={styles.scrollContent}
