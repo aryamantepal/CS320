@@ -152,20 +152,29 @@ app.post("/orgs/:orgId/events", async (req, res) => {
                 organizationId: orgId,
             },
         });
+        // ── NEW: send push to all followers ──
+        const org = await prisma.organization.findUnique({ where: { id: orgId } });
+        const followers = await prisma.follow.findMany({
+            where: { organizationId: orgId },
+            include: { user: { select: { pushToken: true } } },
+        });
+        const tokens = followers.map((f) => f.user.pushToken).filter(Boolean);
+        if (tokens.length > 0) {
+            await fetch("https://exp.host/--/api/v2/push/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(
+                    tokens.map((token) => ({
+                        to: token,
+                        title: `📅 New event from ${org?.name}`,
+                        body: `${title} · 📍 ${location}`,
+                        sound: "default",
+                    }))
+                ),
+            });
+        }
+        // ── END NEW ──
         res.json(event);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Server error" });
-    }
-});
-
-// CHANGED: new route — allows a manager to delete an event for their org
-app.delete("/events/:eventId", async (req, res) => {
-    const eventId = parseInt(req.params.eventId);
-    if (isNaN(eventId)) return res.status(400).json({ error: "Invalid event id" });
-    try {
-        await prisma.event.delete({ where: { id: eventId } });
-        res.json({ success: true });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: "Server error" });
@@ -185,7 +194,42 @@ app.post("/orgs/:orgId/announcements", async (req, res) => {
                 organizationId: orgId,
             },
         });
+        // ── NEW: send push to all followers ──
+        const org = await prisma.organization.findUnique({ where: { id: orgId } });
+        const followers = await prisma.follow.findMany({
+            where: { organizationId: orgId },
+            include: { user: { select: { pushToken: true } } },
+        });
+        const tokens = followers.map((f) => f.user.pushToken).filter(Boolean);
+        if (tokens.length > 0) {
+            await fetch("https://exp.host/--/api/v2/push/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(
+                    tokens.map((token) => ({
+                        to: token,
+                        title: `📢 New announcement from ${org?.name}`,
+                        body: `${title} · 📝 ${body}`,
+                        sound: "default",
+                    }))
+                ),
+            });
+        }
+        // ── END NEW ──
         res.json(announcement);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// CHANGED: new route — allows a manager to delete an event for their org
+app.delete("/events/:eventId", async (req, res) => {
+    const eventId = parseInt(req.params.eventId);
+    if (isNaN(eventId)) return res.status(400).json({ error: "Invalid event id" });
+    try {
+        await prisma.event.delete({ where: { id: eventId } });
+        res.json({ success: true });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: "Server error" });
@@ -276,6 +320,21 @@ app.patch("/users/:userId/password", async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// CHANGED: update user's push notification token for mobile notifications
+app.patch("/users/:userId/push-token", async (req, res) => {
+    const userId = parseInt(req.params.userId);
+    const { pushToken } = req.body;
+    try {
+        await prisma.user.update({
+            where: { id: userId },
+            data: { pushToken },
+        });
+        res.json({ success: true });
+    } catch (err) {
         res.status(500).json({ error: "Server error" });
     }
 });

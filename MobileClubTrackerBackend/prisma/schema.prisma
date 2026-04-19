@@ -16,6 +16,7 @@ model User {
   email     String   @unique
   password  String
   imageUrl  String?
+  pushToken String?
   createdAt DateTime @default(now())
   follows   Follow[]
   role          String       @default("user")
