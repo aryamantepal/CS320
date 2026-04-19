@@ -13,6 +13,28 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ── ADMIN HELPER ──────────────────────────────────────────────────────────────
+// Looks up the caller by `adminUserId` (from body, query, or x-admin-user-id header)
+// and confirms their role is "admin". Returns the admin user on success, or sends
+// a 401/403 response and returns null. Callers MUST check the return value.
+async function requireAdmin(req: express.Request, res: express.Response) {
+    const raw =
+        req.body?.adminUserId ??
+        req.query?.adminUserId ??
+        req.header("x-admin-user-id");
+    const adminUserId = raw !== undefined && raw !== null ? parseInt(String(raw)) : NaN;
+    if (isNaN(adminUserId)) {
+        res.status(401).json({ error: "Missing adminUserId" });
+        return null;
+    }
+    const admin = await prisma.user.findUnique({ where: { id: adminUserId } });
+    if (!admin || admin.role !== "admin") {
+        res.status(403).json({ error: "Forbidden: admin role required" });
+        return null;
+    }
+    return admin;
+}
+
 // ── AUTH ──────────────────────────────────────────────────────────────────────
 
 app.post("/register", async (req, res) => {
@@ -37,12 +59,13 @@ app.post("/login", async (req, res) => {
                 id: true,
                 email: true,
                 name: true,
+                imageUrl: true,
                 createdAt: true,
-                // CHANGED: added role and managedOrg to the response so the
-                // frontend knows if the user is a manager and which club they manage
                 role: true,
-                managedOrg: {
-                    select: { id: true, name: true, description: true },
+                // managedOrgs is now a list (one manager can run multiple clubs)
+                managedOrgs: {
+                    select: { id: true, name: true, description: true, imageUrl: true },
+                    orderBy: { name: "asc" },
                 },
             },
         });
@@ -221,10 +244,12 @@ app.patch("/users/:userId", async (req, res) => {
                 name: true,
                 role: true,
                 imageUrl: true,
-                managedOrg: { select: { id: true, name: true, description: true } },
+                managedOrgs: {
+                    select: { id: true, name: true, description: true, imageUrl: true },
+                    orderBy: { name: "asc" },
+                },
             },
         });
-        // CHANGED: update AsyncStorage with new user data so app reflects changes immediately
         res.json({ success: true, user });
     } catch (err) {
         console.error(err);
@@ -274,21 +299,123 @@ app.post("/club-requests", async (req, res) => {
     }
 });
 
-/* ADMINS can view pending club requests with this query:
-SELECT r.id, u.email, r."clubName", r.description, r.location, r.status
-FROM "ClubRequest" r
-JOIN "User" u ON u.id = r."userId"
-WHERE r.status = 'pending';
+// ── ADMIN: CLUB REQUESTS ──────────────────────────────────────────────────────
+// Admins are assigned manually in the DB (UPDATE "User" SET role = 'admin' ...).
+// All admin routes require `adminUserId` (body/query/header) — see requireAdmin.
 
--- See pending requests
-SELECT r.id, u.email, r."clubName" FROM "ClubRequest" r
-JOIN "User" u ON u.id = r."userId" WHERE r.status = 'pending';
+// List club requests, newest first. Optional ?status=pending|approved|rejected|all (default pending).
+app.get("/admin/club-requests", async (req, res) => {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
+    const status = (req.query.status as string | undefined) ?? "pending";
+    const where = status === "all" ? {} : { status };
+    try {
+        const requests = await prisma.clubRequest.findMany({
+            where,
+            orderBy: { createdAt: "desc" },
+            include: {
+                user: { select: { id: true, name: true, email: true, imageUrl: true, role: true } },
+                reviewedBy: { select: { id: true, name: true, email: true } },
+            },
+        });
+        res.json(requests);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
 
--- Approve (replace IDs)
-UPDATE "User" SET role = 'manager' WHERE id = <userId>;
-UPDATE "Organization" SET "managerId" = <userId> WHERE id = <orgId>;
-UPDATE "ClubRequest" SET status = 'approved' WHERE id = <requestId>;
-*/
+// Approve a club request: create the Organization, promote the user to "manager"
+// (unless already admin), link the user as the org's manager, mark request approved.
+// Runs in a transaction so partial failures don't leave the DB half-updated.
+app.post("/admin/club-requests/:id/approve", async (req, res) => {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
+    const requestId = parseInt(req.params.id);
+    if (isNaN(requestId)) return res.status(400).json({ error: "Invalid request id" });
+    try {
+        const result = await prisma.$transaction(async (tx) => {
+            const request = await tx.clubRequest.findUnique({ where: { id: requestId } });
+            if (!request) throw new Error("NOT_FOUND");
+            if (request.status !== "pending") throw new Error("ALREADY_REVIEWED");
+
+            // Enforce unique org name (same constraint as Organization.name @unique).
+            const nameClash = await tx.organization.findUnique({ where: { name: request.clubName } });
+            if (nameClash) throw new Error("NAME_TAKEN");
+
+            const org = await tx.organization.create({
+                data: {
+                    name: request.clubName,
+                    description: request.description,
+                    managerId: request.userId,
+                },
+            });
+
+            // Only bump role if they aren't already admin (admins stay admins).
+            const requester = await tx.user.findUnique({ where: { id: request.userId } });
+            if (requester && requester.role !== "admin") {
+                await tx.user.update({
+                    where: { id: request.userId },
+                    data: { role: "manager" },
+                });
+            }
+
+            const updated = await tx.clubRequest.update({
+                where: { id: requestId },
+                data: {
+                    status: "approved",
+                    reviewedAt: new Date(),
+                    reviewedById: admin.id,
+                },
+                include: {
+                    user: { select: { id: true, name: true, email: true } },
+                    reviewedBy: { select: { id: true, name: true, email: true } },
+                },
+            });
+
+            return { request: updated, organization: org };
+        });
+        res.json({ success: true, ...result });
+    } catch (err: any) {
+        if (err?.message === "NOT_FOUND") return res.status(404).json({ error: "Request not found" });
+        if (err?.message === "ALREADY_REVIEWED") return res.status(400).json({ error: "Request already reviewed" });
+        if (err?.message === "NAME_TAKEN") return res.status(409).json({ error: "An organization with that name already exists" });
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// Reject a club request with an optional reason.
+app.post("/admin/club-requests/:id/reject", async (req, res) => {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
+    const requestId = parseInt(req.params.id);
+    if (isNaN(requestId)) return res.status(400).json({ error: "Invalid request id" });
+    const { reason } = req.body ?? {};
+    try {
+        const existing = await prisma.clubRequest.findUnique({ where: { id: requestId } });
+        if (!existing) return res.status(404).json({ error: "Request not found" });
+        if (existing.status !== "pending") return res.status(400).json({ error: "Request already reviewed" });
+
+        const updated = await prisma.clubRequest.update({
+            where: { id: requestId },
+            data: {
+                status: "rejected",
+                rejectionReason: typeof reason === "string" && reason.trim() ? reason.trim() : null,
+                reviewedAt: new Date(),
+                reviewedById: admin.id,
+            },
+            include: {
+                user: { select: { id: true, name: true, email: true } },
+                reviewedBy: { select: { id: true, name: true, email: true } },
+            },
+        });
+        res.json({ success: true, request: updated });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
 
 // ── FOLLOWS ───────────────────────────────────────────────────────────────────
 
