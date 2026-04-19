@@ -13,8 +13,7 @@ import { Colors } from "../../constants/Colors";
 import ThemedView from "../../components/ThemedView";
 import SearchBar from "../../components/SearchBar";
 import ClubCard, { NUM_COLUMNS, TILE_MARGIN, CONTAINER_PADDING } from "../../components/ClubCard";
-// CHANGED: import getManagedOrg to filter out the manager's own club
-import { API_URL, getManagedOrg } from "../../utils/auth";
+import { API_URL, getManagedOrgs } from "../../utils/auth";
 
 export default function Explore() {
     const router = useRouter();
@@ -25,22 +24,22 @@ export default function Explore() {
     const [orgs, setOrgs] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    // CHANGED: track the manager's own org id so we can filter it out
-    const [managedOrgId, setManagedOrgId] = useState(null);
+    // Set of all org ids the user manages — hidden from Explore so managers
+    // don't see their own clubs alongside clubs they can follow.
+    const [managedIds, setManagedIds] = useState(new Set());
 
     useFocusEffect(
         useCallback(() => {
             const loadOrgs = async () => {
                 setLoading(true);
                 try {
-                    // CHANGED: fetch managed org alongside clubs
-                    const [res, managedOrg] = await Promise.all([
+                    const [res, managedOrgs] = await Promise.all([
                         fetch(`${API_URL}/orgs`),
-                        getManagedOrg(),
+                        getManagedOrgs(),
                     ]);
                     const data = await res.json();
                     setOrgs(Array.isArray(data) ? data : []);
-                    setManagedOrgId(managedOrg?.id ?? null);
+                    setManagedIds(new Set((managedOrgs ?? []).map((o) => o.id)));
                 } catch (err) {
                     console.error("Failed to load orgs:", err);
                 } finally {
@@ -51,9 +50,8 @@ export default function Explore() {
         }, [])
     );
 
-    // CHANGED: filter out search query AND the manager's own club
     const filteredOrgs = orgs.filter((org) => {
-        if (org.id === managedOrgId) return false;
+        if (managedIds.has(org.id)) return false;
         const q = query.toLowerCase();
         return (
             org.name.toLowerCase().includes(q) ||
