@@ -8,7 +8,6 @@ import {
     Image,
     Pressable,
     StyleSheet,
-    useColorScheme,
     Dimensions,
     ActivityIndicator,
     TextInput,
@@ -22,14 +21,13 @@ import { Colors } from "../../constants/Colors";
 import { getManagedOrg, API_URL } from "../../utils/auth";
 import ThemedView from "../../components/ThemedView";
 import ThemedCard from "../../components/ThemedCard";
-
+import { useTheme } from '../../context/ThemeContext'
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const BANNER_HEIGHT = 160;
 const AVATAR_SIZE = 90;
 
 export default function YourClub() {
-    const colorScheme = useColorScheme();
-    const theme = Colors[colorScheme] ?? Colors.light;
+     const { theme } = useTheme();
 
     const [org, setOrg] = useState(null);
     const [posts, setPosts] = useState([]);
@@ -224,7 +222,7 @@ export default function YourClub() {
                 </View>
 
                 {/* ── CLUB INFO ── */}
-                <View style={[styles.infoSection, { backgroundColor: theme.uiBackground }]}>
+                <View style={[styles.infoSection, { backgroundColor: theme.background }]}>
                     <View style={styles.nameRow}>
                         <View style={{ flex: 1 }}>
                             <Text style={[styles.clubName, { color: theme.text }]}>{org.name}</Text>

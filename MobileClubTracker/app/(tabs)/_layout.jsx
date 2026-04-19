@@ -1,15 +1,16 @@
 import React, { useEffect, useState } from "react";
-import { useColorScheme } from "react-native";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "../../constants/Colors";
 // CHANGED: import isManager helper to conditionally show the Your Club tab
 import { isManager } from "../../utils/auth";
+import { useTheme } from "../../context/ThemeContext";
 
 export default function TabLayout() {
-    const colorScheme = useColorScheme();
-    const theme = Colors[colorScheme] ?? Colors.light;
-
+    const themeContext = useTheme();
+    const theme = themeContext?.theme;
+    if (!theme) return null;
+    
     // CHANGED: track whether the logged-in user is a manager
     const [managerMode, setManagerMode] = useState(false);
 
@@ -26,7 +27,7 @@ export default function TabLayout() {
             screenOptions={{
                 headerShown: false,
                 tabBarStyle: {
-                    backgroundColor: theme.navBackground,
+                    backgroundColor: theme.background,
                     paddingTop: 10,
                     height: 100,
                 },
