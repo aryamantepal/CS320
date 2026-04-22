@@ -20,8 +20,9 @@ model User {
   createdAt DateTime @default(now())
   follows   Follow[]
   role          String       @default("user")
-  managedOrg    Organization? @relation("OrgManager")
+  managedOrgs   Organization[] @relation("OrgManager")
   clubRequests  ClubRequest[]
+  reviewedRequests ClubRequest[] @relation("ClubRequestReviewer")
 }
 
 model Organization {
@@ -33,7 +34,7 @@ model Organization {
   followers     Follow[]
   events        Event[]
   announcements Announcement[]
-  managerId  Int?    @unique
+  managerId  Int?
   manager    User?   @relation("OrgManager", fields: [managerId], references: [id])
 }
 
@@ -67,12 +68,16 @@ model Announcement {
 }
 
 model ClubRequest {
-  id          Int      @id @default(autoincrement())
-  userId      Int
-  clubName    String
-  description String
-  location    String
-  status      String   @default("pending")
-  createdAt   DateTime @default(now())
-  user        User     @relation(fields: [userId], references: [id])
+  id              Int      @id @default(autoincrement())
+  userId          Int
+  clubName        String
+  description     String
+  location        String
+  status          String   @default("pending")
+  createdAt       DateTime @default(now())
+  rejectionReason String?
+  reviewedAt      DateTime?
+  reviewedById    Int?
+  user            User     @relation(fields: [userId], references: [id])
+  reviewedBy      User?    @relation("ClubRequestReviewer", fields: [reviewedById], references: [id])
 }
