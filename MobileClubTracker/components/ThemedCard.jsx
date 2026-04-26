@@ -2,12 +2,12 @@ import React from "react";
 import {
     View,
     StyleSheet,
-    useColorScheme,
     Pressable,
     Image,
     Text,
 } from "react-native";
 import { Colors } from "../constants/Colors";
+import { useTheme } from "../context/ThemeContext";
 
 export default function ThemedCard({
     style,
@@ -20,11 +20,9 @@ export default function ThemedCard({
     clubName,
     bannerColor,
 }) {
-    const colorScheme = useColorScheme();
-    const theme = Colors[colorScheme] ?? Colors.light;
-
-    const dividerColor =
-        colorScheme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.09)";
+    const { isDarkMode } = useTheme();
+    const theme = Colors[isDarkMode ? "dark" : "light"] ?? Colors.light;
+    const dividerColor = isDarkMode ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.09)";
 
     const content = (
         <View style={styles.row}>

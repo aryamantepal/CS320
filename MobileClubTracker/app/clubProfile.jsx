@@ -6,7 +6,6 @@ import {
     Image,
     Pressable,
     StyleSheet,
-    useColorScheme,
     Dimensions,
     ActivityIndicator,
 } from "react-native";
@@ -16,6 +15,7 @@ import ThemedView from "../components/ThemedView";
 import ThemedCard from "../components/ThemedCard";
 import { API_URL, getUserId } from "../utils/auth";
 import { addEventToCalendar } from "../utils/calendar";
+import { useTheme } from "../context/ThemeContext";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const BANNER_HEIGHT = 160;
@@ -24,8 +24,8 @@ const AVATAR_SIZE = 90;
 // CHANGED: clubProfile is now a pure public viewer — all manager logic moved to yourClub.jsx
 export default function ClubPage() {
     const router = useRouter();
-    const colorScheme = useColorScheme();
-    const theme = Colors[colorScheme] ?? Colors.light;
+    const { isDarkMode } = useTheme();
+    const theme = Colors[isDarkMode ? "dark" : "light"] ?? Colors.light;
 
     const { id, name } = useLocalSearchParams();
     const orgId = parseInt(id);

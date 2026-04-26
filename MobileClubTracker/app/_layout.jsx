@@ -2,6 +2,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { useEffect, useState } from "react";
 import { getUser } from "../utils/auth";
 import { ThemeProvider } from "../context/ThemeContext";
+import { StatusBar } from "react-native";
 
 function AuthGate({ children }) {
     const router = useRouter();
@@ -38,6 +39,7 @@ export default function RootLayout() {
     return (
         <ThemeProvider>
             <AuthGate>
+                <StatusBar style="auto" />
                 <Stack screenOptions={{ headerShown: false }} />
             </AuthGate>
         </ThemeProvider>

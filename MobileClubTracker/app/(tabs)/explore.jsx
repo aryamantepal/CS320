@@ -8,48 +8,47 @@ import {
     ActivityIndicator,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
+import { Colors } from "../../constants/Colors";
 import ThemedView from "../../components/ThemedView";
 import SearchBar from "../../components/SearchBar";
 import ClubCard, { NUM_COLUMNS, TILE_MARGIN, CONTAINER_PADDING } from "../../components/ClubCard";
-import { API_URL, getManagedOrg } from "../../utils/auth";
+import { API_URL, getManagedOrgs } from "../../utils/auth";
 import { useTheme } from "../../context/ThemeContext";
 
 export default function Explore() {
     const router = useRouter();
-    const { theme, isDarkMode} = useTheme();
+    const { isDarkMode } = useTheme();
+    const theme = Colors[isDarkMode ? "dark" : "light"] ?? Colors.light;
 
     const [query, setQuery] = useState("");
     const [orgs, setOrgs] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [managedOrgId, setManagedOrgId] = useState(null);
+    const [managedIds, setManagedIds] = useState(new Set());
 
     useFocusEffect(
         useCallback(() => {
             const loadOrgs = async () => {
                 setLoading(true);
                 try {
-                    const [res, managedOrg] = await Promise.all([
+                    const [res, managedOrgsList] = await Promise.all([
                         fetch(`${API_URL}/orgs`),
                         getManagedOrgs(),
                     ]);
-
                     const data = await res.json();
                     setOrgs(Array.isArray(data) ? data : []);
-                    setManagedIds(new Set((managedOrgs ?? []).map((o) => o.id)));
+                    setManagedIds(new Set((managedOrgsList ?? []).map((o) => o.id)));
                 } catch (err) {
                     console.error("Failed to load orgs:", err);
                 } finally {
                     setLoading(false);
                 }
             };
-
             loadOrgs();
         }, [])
     );
 
     const filteredOrgs = orgs.filter((org) => {
-        if (org.id === managedOrgId) return false;
-
+        if (managedIds.has(org.id)) return false;
         const q = query.toLowerCase();
         return (
             org.name.toLowerCase().includes(q) ||
@@ -59,21 +58,19 @@ export default function Explore() {
 
     if (loading) {
         return (
-            <ThemedView style={styles.center}>
-                <ActivityIndicator size="large" color={theme.text} />
+            <ThemedView safe={true} style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
+                <ActivityIndicator size="large" />
             </ThemedView>
         );
     }
 
     return (
-        <ThemedView style={[styles.container, { backgroundColor: theme.background }]}>
+        <ThemedView safe={true} style={styles.container}>
             <KeyboardAvoidingView
                 style={{ flex: 1 }}
                 behavior={Platform.OS === "ios" ? "padding" : undefined}
             >
-                <Text style={[styles.heading, { color: theme.text }]}>
-                    Explore
-                </Text>
+                <Text style={[styles.heading, { color: theme.text }]}>Explore</Text>
 
                 <SearchBar
                     value={query}
@@ -106,11 +103,7 @@ export default function Explore() {
                             No clubs found for "{query}"
                         </Text>
                     }
-                    contentContainerStyle={[
-                        { paddingBottom: 120 },
-                        filteredOrgs.length === 0 && styles.emptyContainer
-                    ]}
-                    style={{ backgroundColor: theme.background }}
+                    contentContainerStyle={{ paddingBottom: 120 }}
                     keyboardDismissMode="on-drag"
                     showsVerticalScrollIndicator={false}
                 />
@@ -134,14 +127,5 @@ const styles = StyleSheet.create({
         marginTop: 40,
         fontSize: 15,
         fontStyle: "italic",
-    },
-    center: {
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-    },
-    emptyContainer: {
-        flexGrow: 1,
-        justifyContent: "center",
     },
 });
