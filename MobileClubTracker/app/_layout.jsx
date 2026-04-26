@@ -1,11 +1,12 @@
 import { Stack, useRouter, useSegments } from "expo-router";
 import { useEffect, useState } from "react";
 import { getUser } from "../utils/auth";
+import { ThemeProvider } from "../context/ThemeContext";
 
-export default function RootLayout() {
+function AuthGate({ children }) {
     const router = useRouter();
     const segments = useSegments();
-    const [loading, setLoading] = useState(true);
+    const [ready, setReady] = useState(false);
 
     useEffect(() => {
         const checkAuth = async () => {
@@ -14,19 +15,31 @@ export default function RootLayout() {
 
             if (!user && !inAuthGroup) {
                 router.replace("/login");
+                return;
             }
 
             if (user && inAuthGroup) {
                 router.replace("/(tabs)");
+                return;
             }
 
-            setLoading(false);
+            setReady(true);
         };
 
         checkAuth();
-    }, []);
+    }, [segments]);
 
-    if (loading) return null;
+    if (!ready) return null;
 
-    return <Stack screenOptions={{ headerShown: false }} />;
+    return children;
+}
+
+export default function RootLayout() {
+    return (
+        <ThemeProvider>
+            <AuthGate>
+                <Stack screenOptions={{ headerShown: false }} />
+            </AuthGate>
+        </ThemeProvider>
+    );
 }

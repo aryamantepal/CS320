@@ -19,6 +19,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Colors } from "../../constants/Colors";
 import { logoutUser, getUser, getManagedOrgs, API_URL, updateUser } from "../../utils/auth";
 import ThemedView from "../../components/ThemedView.jsx";
+import { useTheme } from "../../context/ThemeContext";
 import { registerForPushNotifications } from "../../utils/notifications";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -27,10 +28,9 @@ const AVATAR_SIZE = 90;
 
 export default function Profile() {
     const router = useRouter();
-    const colorScheme = useColorScheme();
-    const [isDarkMode, setIsDarkMode] = useState(colorScheme === "dark");
-    const theme = Colors[isDarkMode ? "dark" : "light"] ?? Colors.light;
+    const systemScheme = useColorScheme();
 
+    const { theme, isDarkMode, setIsDarkMode } = useTheme();
     const [user, setUser] = useState(null);
     const [followedOrgs, setFollowedOrgs] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -177,7 +177,7 @@ export default function Profile() {
     return (
         <ThemedView safe={true} style={{ flex: 1, backgroundColor: theme.background }}>
             <ScrollView
-                style={{ backgroundColor: "transparent" }}
+                style={{ backgroundColor: theme.background }}
                 contentContainerStyle={styles.scrollContent}
             >
                 {/* ── HEADER: Banner + Avatar ── */}
@@ -318,6 +318,17 @@ export default function Profile() {
                             },
                         },
                         {
+                            label: `Theme   ${isDarkMode ? "🌙 Dark" : "☀️ Light"}`,
+                            onPress: () => {
+                                setIsDarkMode((v) => {
+                                    const newValue = !v;
+                                    //console.log("Dark mode:", newValue);
+                                    return newValue;
+                                });
+                            },
+
+                        },               
+                        {
                             label: `Privacy   ${privateProfile ? "🔒 Private" : "🌐 Public"}`,
                             onPress: () => setPrivateProfile((v) => !v),
                         },
@@ -419,6 +430,8 @@ export default function Profile() {
                     </View>
                 </KeyboardAvoidingView>
             </Modal>
+
+            
 
             {/* ── CLUB MANAGER REQUEST MODAL ── */}
             <Modal
