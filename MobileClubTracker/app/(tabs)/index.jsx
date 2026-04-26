@@ -5,6 +5,8 @@ import ThemedCard from "../../components/ThemedCard";
 import ThemedView from "../../components/ThemedView.jsx";
 import { getUserId, API_URL } from "../../utils/auth";
 import { addEventToCalendar } from "../../utils/calendar";
+import { useTheme } from "../../context/ThemeContext";
+
 
 // Base colors (announcements)
 const announcementColors = [
@@ -27,6 +29,8 @@ const eventColors = [
 ];
 
 export default function Home() {
+    const { theme, isDarkMode, setIsDarkMode } = useTheme();
+
     const router = useRouter();
 
     const [feed, setFeed] = useState([]);
