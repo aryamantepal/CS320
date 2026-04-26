@@ -17,10 +17,10 @@ import {
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Colors } from "../../constants/Colors";
-import { logoutUser, getUser, getManagedOrg, API_URL, updateUser } from "../../utils/auth";
+import { logoutUser, getUser, getManagedOrgs, API_URL, updateUser } from "../../utils/auth";
 import ThemedView from "../../components/ThemedView.jsx";
 import { useTheme } from "../../context/ThemeContext";
-
+import { registerForPushNotifications } from "../../utils/notifications";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const BANNER_HEIGHT = 140;
@@ -34,7 +34,7 @@ export default function Profile() {
     const [user, setUser] = useState(null);
     const [followedOrgs, setFollowedOrgs] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [managedOrg, setManagedOrg] = useState(null);
+    const [managedOrgs, setManagedOrgs] = useState([]);
 
     // CHANGED: Edit Profile modal state
     const [showEditModal, setShowEditModal] = useState(false);
@@ -70,18 +70,30 @@ export default function Profile() {
                     try {
                         const [followsRes, managed] = await Promise.all([
                             fetch(`${API_URL}/follows/${currentUser.id}/orgs`),
-                            getManagedOrg(),
+                            getManagedOrgs(),
                         ]);
-                        const data = await followsRes.json();
+                        const followsData = await followsRes.json();
 
-                        if (managed) {
-                            const orgRes = await fetch(`${API_URL}/orgs/${managed.id}`);
-                            const orgData = await orgRes.json();
-                            setManagedOrg(orgData);
-                            setFollowedOrgs(Array.isArray(data) ? data.filter((org) => org.id !== managed.id) : []);
-                        } else {
-                            setFollowedOrgs(Array.isArray(data) ? data : []);
-                        }
+                        // Hydrate each managed org with follower counts (the cached user
+                        // object from login doesn't include _count).
+                        const hydrated = await Promise.all(
+                            (managed ?? []).map(async (m) => {
+                                try {
+                                    const r = await fetch(`${API_URL}/orgs/${m.id}`);
+                                    return r.ok ? await r.json() : m;
+                                } catch {
+                                    return m;
+                                }
+                            })
+                        );
+                        setManagedOrgs(hydrated);
+
+                        const managedIds = new Set(hydrated.map((o) => o.id));
+                        setFollowedOrgs(
+                            Array.isArray(followsData)
+                                ? followsData.filter((org) => !managedIds.has(org.id))
+                                : []
+                        );
                     } catch (err) {
                         console.error("Failed to load profile data:", err);
                     }
@@ -196,39 +208,47 @@ export default function Profile() {
                     {user?.role === "manager" && (
                         <Text style={styles.managerBadge}>🏛️ Club Manager</Text>
                     )}
+                    {user?.role === "admin" && (
+                        <Text style={styles.adminBadge}>🛡️ Admin</Text>
+                    )}
                     {/* CHANGED: Edit Profile now opens the modal */}
                     <Pressable
-                        style={[styles.editButton, { borderColor: theme.iconColor }]}
+                        style={[styles.editButton, { borderColor: theme.iconColor, backgroundColor: theme.uiBackground }]}
                         onPress={handleOpenEditModal}
                     >
                         <Text style={[styles.editButtonText, { color: theme.text }]}>Edit Profile</Text>
                     </Pressable>
                 </View>
 
-                {/* ── YOUR CLUB (managers only) ── */}
-                {managedOrg && (
+                {/* ── YOUR CLUBS (managers only) ── */}
+                {managedOrgs.length > 0 && (
                     <View style={styles.sectionContainer}>
-                        <Text style={[styles.sectionTitle, { color: theme.text }]}>Your Club</Text>
-                        <Pressable
-                            style={[styles.clubRow, { backgroundColor: theme.uiBackground }]}
-                            onPress={() => router.push("/(tabs)/yourClub")}
-                        >
-                            <Image
-                                source={
-                                    managedOrg.imageUrl
-                                        ? { uri: managedOrg.imageUrl }
-                                        : require("../../assets/adaptive-icon.png")
-                                }
-                                style={styles.clubAvatar}
-                            />
-                            <View style={styles.clubInfo}>
-                                <Text style={[styles.clubName, { color: theme.text }]}>{managedOrg.name}</Text>
-                                <Text style={[styles.clubMeta, { color: theme.iconColor }]}>
-                                    {managedOrg._count?.followers ?? 0} followers · Tap to manage
-                                </Text>
-                            </View>
-                            <Text style={{ color: theme.iconColor, fontSize: 18 }}>›</Text>
-                        </Pressable>
+                        <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                            {managedOrgs.length === 1 ? "Your Club" : "Your Clubs"}
+                        </Text>
+                        {managedOrgs.map((org) => (
+                            <Pressable
+                                key={org.id}
+                                style={[styles.clubRow, { backgroundColor: theme.uiBackground }]}
+                                onPress={() => router.push("/(tabs)/yourClub")}
+                            >
+                                <Image
+                                    source={
+                                        org.imageUrl
+                                            ? { uri: org.imageUrl }
+                                            : require("../../assets/adaptive-icon.png")
+                                    }
+                                    style={styles.clubAvatar}
+                                />
+                                <View style={styles.clubInfo}>
+                                    <Text style={[styles.clubName, { color: theme.text }]}>{org.name}</Text>
+                                    <Text style={[styles.clubMeta, { color: theme.iconColor }]}>
+                                        {org._count?.followers ?? 0} followers · Tap to manage
+                                    </Text>
+                                </View>
+                                <Text style={{ color: theme.iconColor, fontSize: 18 }}>›</Text>
+                            </Pressable>
+                        ))}
                     </View>
                 )}
 
@@ -276,12 +296,26 @@ export default function Profile() {
                     <Text style={[styles.sectionTitle, { color: theme.text }]}>Account Settings</Text>
                     {[
                         {
+                            label: "Dark Mode",
+                            onPress: () => setIsDarkMode((v) => !v),
+                        },
+                        {
                             label: "Change Password",
                             onPress: () => setShowPasswordModal(true),
                         },
+
                         {
                             label: `Notifications   ${notificationsEnabled ? "🔔 On" : "🔕 Off"}`,
-                            onPress: () => setNotificationsEnabled((v) => !v),
+                            onPress: async () => {
+                                if (!notificationsEnabled) {
+                                    const token = await registerForPushNotifications(user.id);
+                                    if (token) setNotificationsEnabled(true);
+                                    // if they denied permission, token is null and toggle stays off
+                                } else {
+                                    // Optionally: tell server to delete the token
+                                    setNotificationsEnabled(false);
+                                }
+                            },
                         },
                         {
                             label: `Theme   ${isDarkMode ? "🌙 Dark" : "☀️ Light"}`,
@@ -309,13 +343,13 @@ export default function Profile() {
                         </Pressable>
                     ))}
 
-                    {user?.role !== "manager" && (
+                    {user?.role !== "admin" && (
                         <Pressable
                             style={[styles.settingsRow, { backgroundColor: theme.uiBackground }]}
                             onPress={() => setShowRequestModal(true)}
                         >
                             <Text style={[styles.settingsLabel, { color: "#007AFF" }]}>
-                                🏛️ Be a Club Manager
+                                {user?.role === "manager" ? "🏛️ Apply for Another Club" : "🏛️ Be a Club Manager"}
                             </Text>
                             <Text style={{ color: theme.iconColor, fontSize: 18 }}>›</Text>
                         </Pressable>
@@ -577,6 +611,7 @@ const styles = StyleSheet.create({
     infoSection: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16, marginBottom: 8 },
     name: { fontSize: 22, fontWeight: "700", marginBottom: 4 },
     managerBadge: { fontSize: 13, color: "#007AFF", fontWeight: "600", marginBottom: 10 },
+    adminBadge: { fontSize: 13, color: "#6849a7", fontWeight: "600", marginBottom: 10 },
     editButton: { alignSelf: "flex-start", borderWidth: 1, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 16 },
     editButtonText: { fontSize: 14, fontWeight: "500" },
     sectionContainer: { marginBottom: 8, paddingHorizontal: 16 },

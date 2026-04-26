@@ -13,11 +13,13 @@ export default function TabLayout() {
     
     // CHANGED: track whether the logged-in user is a manager
     const [managerMode, setManagerMode] = useState(false);
+    const [adminMode, setAdminMode] = useState(false);
 
     useEffect(() => {
         const checkRole = async () => {
-            const manager = await isManager();
+            const [manager, admin] = await Promise.all([isManager(), isAdmin()]);
             setManagerMode(manager);
+            setAdminMode(admin);
         };
         checkRole();
     }, []);
@@ -66,14 +68,23 @@ export default function TabLayout() {
                     ),
                 }}
             />
-            {/* CHANGED: only show Your Club tab if the user is a manager */}
             <Tabs.Screen
                 name="yourClub"
                 options={{
                     title: "Your Club",
-                    href: managerMode ? undefined : null, // null hides it from the tab bar
+                    href: managerMode ? undefined : null,
                     tabBarIcon: ({ color }) => (
                         <Ionicons name="shield" size={30} color={color} />
+                    ),
+                }}
+            />
+            <Tabs.Screen
+                name="admin"
+                options={{
+                    title: "Admin",
+                    href: adminMode ? undefined : null,
+                    tabBarIcon: ({ color }) => (
+                        <Ionicons name="key" size={28} color={color} />
                     ),
                 }}
             />

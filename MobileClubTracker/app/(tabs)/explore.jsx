@@ -30,12 +30,12 @@ export default function Explore() {
                 try {
                     const [res, managedOrg] = await Promise.all([
                         fetch(`${API_URL}/orgs`),
-                        getManagedOrg(),
+                        getManagedOrgs(),
                     ]);
 
                     const data = await res.json();
                     setOrgs(Array.isArray(data) ? data : []);
-                    setManagedOrgId(managedOrg?.id ?? null);
+                    setManagedIds(new Set((managedOrgs ?? []).map((o) => o.id)));
                 } catch (err) {
                     console.error("Failed to load orgs:", err);
                 } finally {

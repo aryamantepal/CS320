@@ -52,9 +52,57 @@ export const isManager = async () => {
     return user?.role === "manager";
 };
 
-export const getManagedOrg = async () => {
+export const isAdmin = async () => {
     const user = await getUser();
-    return user?.managedOrg ?? null;
+    return user?.role === "admin";
+};
+
+// Returns the full list of orgs this user manages (empty array if none).
+export const getManagedOrgs = async () => {
+    const user = await getUser();
+    return user?.managedOrgs ?? [];
+};
+
+// Back-compat for screens that still assume a single managed org —
+// returns the first managed org, or null.
+export const getManagedOrg = async () => {
+    const orgs = await getManagedOrgs();
+    return orgs[0] ?? null;
+};
+
+// ── ADMIN: CLUB REQUESTS ─────────────────────────────────────────────────────
+// All admin API calls pass the caller's userId as adminUserId; the server
+// verifies role === "admin" before acting.
+
+export const listClubRequests = async (adminUserId, status = "pending") => {
+    const response = await fetch(
+        `${API_URL}/admin/club-requests?status=${encodeURIComponent(status)}&adminUserId=${adminUserId}`
+    );
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    return data;
+};
+
+export const approveClubRequest = async (adminUserId, requestId) => {
+    const response = await fetch(`${API_URL}/admin/club-requests/${requestId}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminUserId }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    return data;
+};
+
+export const rejectClubRequest = async (adminUserId, requestId, reason = null) => {
+    const response = await fetch(`${API_URL}/admin/club-requests/${requestId}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminUserId, ...(reason && { reason }) }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    return data;
 };
 
 export const updateUser = async (userId, fields) => {
