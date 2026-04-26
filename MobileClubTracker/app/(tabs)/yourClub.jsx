@@ -21,13 +21,14 @@ import { Colors } from "../../constants/Colors";
 import { getManagedOrg, API_URL } from "../../utils/auth";
 import ThemedView from "../../components/ThemedView";
 import ThemedCard from "../../components/ThemedCard";
-import { useTheme } from '../../context/ThemeContext'
+import { useTheme } from '../../context/ThemeContext';
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const BANNER_HEIGHT = 160;
 const AVATAR_SIZE = 90;
 
 export default function YourClub() {
-     const { theme } = useTheme();
+    const { isDarkMode } = useTheme();
+    const theme = Colors[isDarkMode ? "dark" : "light"] ?? Colors.light;
 
     const [org, setOrg] = useState(null);
     const [posts, setPosts] = useState([]);
