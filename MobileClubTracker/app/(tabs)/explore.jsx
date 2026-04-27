@@ -11,7 +11,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import ThemedView from "../../components/ThemedView";
 import SearchBar from "../../components/SearchBar";
 import ClubCard, { NUM_COLUMNS, TILE_MARGIN, CONTAINER_PADDING } from "../../components/ClubCard";
-import { API_URL, getManagedOrg } from "../../utils/auth";
+import { API_URL, getManagedOrgs } from "../../utils/auth";
 import { useTheme } from "../../context/ThemeContext";
 
 export default function Explore() {
@@ -21,14 +21,14 @@ export default function Explore() {
     const [query, setQuery] = useState("");
     const [orgs, setOrgs] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [managedOrgId, setManagedOrgId] = useState(null);
+    const [managedIds, setManagedIds] = useState(new Set());
 
     useFocusEffect(
         useCallback(() => {
             const loadOrgs = async () => {
                 setLoading(true);
                 try {
-                    const [res, managedOrg] = await Promise.all([
+                    const [res, managedOrgs] = await Promise.all([
                         fetch(`${API_URL}/orgs`),
                         getManagedOrgs(),
                     ]);
@@ -48,7 +48,7 @@ export default function Explore() {
     );
 
     const filteredOrgs = orgs.filter((org) => {
-        if (org.id === managedOrgId) return false;
+        if (managedIds.has(org.id)) return false;
 
         const q = query.toLowerCase();
         return (
