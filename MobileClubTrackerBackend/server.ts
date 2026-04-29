@@ -550,12 +550,12 @@ app.get("/feed/:userId", async (req, res) => {
         const [events, announcements] = await Promise.all([
             prisma.event.findMany({
                 where: { organizationId: { in: orgIds } },
-                include: { organization: { select: { name: true } } },
+                include: { organization: { select: { name: true, imageUrl: true } } },
                 orderBy: { createdAt: "desc" },
             }),
             prisma.announcement.findMany({
                 where: { organizationId: { in: orgIds } },
-                include: { organization: { select: { name: true } } },
+                include: { organization: { select: { name: true, imageUrl: true } } },
                 orderBy: { createdAt: "desc" },
             }),
         ]);

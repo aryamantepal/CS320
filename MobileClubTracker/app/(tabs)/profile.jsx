@@ -21,6 +21,7 @@ import { logoutUser, getUser, getManagedOrgs, API_URL, updateUser } from "../../
 import ThemedView from "../../components/ThemedView.jsx";
 import { useTheme } from "../../context/ThemeContext";
 import { registerForPushNotifications } from "../../utils/notifications";
+import { pickAndUploadImage } from "../../utils/uploadImage";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const BANNER_HEIGHT = 140;
@@ -40,6 +41,7 @@ export default function Profile() {
     const [showEditModal, setShowEditModal] = useState(false);
     const [editName, setEditName] = useState("");
     const [editImageUrl, setEditImageUrl] = useState("");
+    const [uploadingImage, setUploadingImage] = useState(false);
     const [savingProfile, setSavingProfile] = useState(false);
 
     // Club manager request state
@@ -103,6 +105,18 @@ export default function Profile() {
             loadProfile();
         }, [])
     );
+
+    const handlePickProfileImage = async () => {
+        setUploadingImage(true);
+        try {
+            const url = await pickAndUploadImage("club-images", `users/${user.id}.jpg`);
+            if (url) setEditImageUrl(url);
+        } catch (err) {
+            Alert.alert("Error", err.message ?? "Could not upload image.");
+        } finally {
+            setUploadingImage(false);
+        }
+    };
 
     // CHANGED: open edit modal pre-filled with current values
     const handleOpenEditModal = () => {
@@ -378,8 +392,7 @@ export default function Profile() {
                     <View style={[styles.modalBox, { backgroundColor: theme.uiBackground }]}>
                         <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Profile</Text>
 
-                        {/* CHANGED: live avatar preview as user types URL */}
-                        <View style={styles.avatarPreviewContainer}>
+                        <Pressable style={styles.avatarPreviewContainer} onPress={handlePickProfileImage} disabled={uploadingImage}>
                             <Image
                                 source={
                                     editImageUrl.trim()
@@ -388,8 +401,10 @@ export default function Profile() {
                                 }
                                 style={styles.avatarPreview}
                             />
-                            <Text style={[styles.previewLabel, { color: theme.iconColor }]}>Preview</Text>
-                        </View>
+                            <Text style={[styles.previewLabel, { color: theme.iconColor }]}>
+                                {uploadingImage ? "Uploading..." : "Tap to change photo"}
+                            </Text>
+                        </Pressable>
 
                         <Text style={[styles.fieldLabel, { color: theme.iconColor }]}>Display Name</Text>
                         <TextInput
@@ -397,16 +412,6 @@ export default function Profile() {
                             placeholderTextColor={theme.iconColor}
                             value={editName}
                             onChangeText={setEditName}
-                            style={[styles.input, { borderColor: theme.iconColor, color: theme.text }]}
-                        />
-
-                        <Text style={[styles.fieldLabel, { color: theme.iconColor }]}>Profile Picture URL</Text>
-                        <TextInput
-                            placeholder="https://example.com/photo.png"
-                            placeholderTextColor={theme.iconColor}
-                            value={editImageUrl}
-                            onChangeText={setEditImageUrl}
-                            autoCapitalize="none"
                             style={[styles.input, { borderColor: theme.iconColor, color: theme.text }]}
                         />
 
