@@ -13,6 +13,18 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ── COLOR HELPER ──────────────────────────────────────────────────────────────
+// Simple helper to assign a consistent color to each event and announcement.
+function randomRgb() {
+    const r = Math.floor(Math.random() * 120) + 80;  // range: 80-200
+    const g = Math.floor(Math.random() * 120) + 80;
+    const b = Math.floor(Math.random() * 120) + 80;
+    return {
+        base: `rgb(${r},${g},${b})`,
+        light: `rgb(${Math.round(r+(255-r)*0.4)},${Math.round(g+(255-g)*0.4)},${Math.round(b+(255-b)*0.4)})`,
+    };
+}
+
 // ── ADMIN HELPER ──────────────────────────────────────────────────────────────
 // Looks up the caller by `adminUserId` (from body, query, or x-admin-user-id header)
 // and confirms their role is "admin". Returns the admin user on success, or sends
@@ -144,15 +156,17 @@ app.post("/orgs/:orgId/events", async (req, res) => {
     if (isNaN(orgId)) return res.status(400).json({ error: "Invalid org id" });
     const { title, location, startDateTime } = req.body;
     try {
+        const { base } = randomRgb();
         const event = await prisma.event.create({
             data: {
                 title,
                 location,
                 startDateTime: new Date(startDateTime),
                 organizationId: orgId,
+                color: base,
             },
         });
-        // ── NEW: send push to all followers ──
+
         const org = await prisma.organization.findUnique({ where: { id: orgId } });
         const followers = await prisma.follow.findMany({
             where: { organizationId: orgId },
@@ -173,7 +187,7 @@ app.post("/orgs/:orgId/events", async (req, res) => {
                 ),
             });
         }
-        // ── END NEW ──
+
         res.json(event);
     } catch (err) {
         console.error(err);
@@ -187,14 +201,16 @@ app.post("/orgs/:orgId/announcements", async (req, res) => {
     if (isNaN(orgId)) return res.status(400).json({ error: "Invalid org id" });
     const { title, body } = req.body;
     try {
+        const { light } = randomRgb();
         const announcement = await prisma.announcement.create({
             data: {
                 title,
                 body,
                 organizationId: orgId,
+                color: light,
             },
         });
-        // ── NEW: send push to all followers ──
+
         const org = await prisma.organization.findUnique({ where: { id: orgId } });
         const followers = await prisma.follow.findMany({
             where: { organizationId: orgId },
@@ -215,7 +231,7 @@ app.post("/orgs/:orgId/announcements", async (req, res) => {
                 ),
             });
         }
-        // ── END NEW ──
+
         res.json(announcement);
     } catch (err) {
         console.error(err);

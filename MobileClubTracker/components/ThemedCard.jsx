@@ -9,6 +9,19 @@ import {
 import { Colors } from "../constants/Colors";
 import { useTheme } from "../context/ThemeContext";
 
+function getTextColorForBackground(bgColor) {
+    if (!bgColor) return null;
+    // Parse rgb(r,g,b) string
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    if (!match) return null;
+    const r = parseInt(match[1]);
+    const g = parseInt(match[2]);
+    const b = parseInt(match[3]);
+    // Standard luminance formula
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.5 ? "#000000" : "#ffffff";
+}
+
 export default function ThemedCard({
     style,
     onPress,
@@ -24,6 +37,8 @@ export default function ThemedCard({
     const theme = Colors[isDarkMode ? "dark" : "light"] ?? Colors.light;
     const dividerColor = isDarkMode ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.09)";
 
+    const cardTextColor = bannerColor ? getTextColorForBackground(bannerColor) : null;
+    
     const content = (
         <View style={styles.row}>
             {/* LEFT COLUMN */}
@@ -37,7 +52,7 @@ export default function ThemedCard({
                     style={styles.avatar}
                 />
                 {clubName && (
-                    <Text style={[styles.clubName, { color: theme.text }]}>
+                    <Text style={[styles.clubName, { color: cardTextColor ?? theme.text }]}>
                         {clubName}
                     </Text>
                 )}
@@ -49,13 +64,13 @@ export default function ThemedCard({
             {/* RIGHT COLUMN */}
             <View style={styles.rightColumn}>
                 {title && (
-                    <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
+                    <Text style={[styles.title, { color: cardTextColor ?? theme.text }]}>{title}</Text>
                 )}
 
                 <View style={[styles.horizontalDivider, { backgroundColor: dividerColor }]} />
 
                 {subtitle && (
-                    <Text style={styles.subtitle}>{subtitle}</Text>
+                    <Text style={[styles.subtitle, { color: cardTextColor ? `${cardTextColor}cc` : "gray" }]}>{subtitle}</Text>
                 )}
 
                 {/* CALENDAR BUTTON — only shows for events */}

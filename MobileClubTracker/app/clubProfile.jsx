@@ -167,6 +167,7 @@ export default function ClubPage() {
                                         ? `📍 ${post.location} · ${new Date(post.startDateTime).toLocaleDateString()}`
                                         : post.body
                                 }
+                                bannerColor={post.color ?? undefined}
                                 onPress={() =>
                                     router.push({
                                         pathname: "/postDetail",

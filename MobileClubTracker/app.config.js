@@ -31,7 +31,8 @@ export default {
     plugins: [
         "expo-router",
         "expo-calendar",
-        "expo-notifications"
+        "expo-notifications",
+        "@react-native-community/datetimepicker"
     ],
     extra: {
       apiUrl: process.env.API_URL,  // ← no quotes, reads from .env
