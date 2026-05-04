@@ -27,21 +27,24 @@ export default function Home() {
 
     useFocusEffect(
         useCallback(() => {
+            let isActive = true;
+
             const loadFeed = async () => {
                 setLoading(true);
-                const userId = await getUserId();
-                if (!userId) { setLoading(false); return; }
 
                 try {
-                    // Fetch feed and existing user colors in parallel
+                    const userId = await getUserId();
+                    if (!userId) return;
+
                     const [feedRes, colorsRes] = await Promise.all([
                         fetch(`${API_URL}/feed/${userId}`),
                         fetch(`${API_URL}/users/${userId}/post-colors`),
                     ]);
-                    const feedData = Array.isArray(await feedRes.json()) ? await feedRes.json() : [];
-                    const existingColors = await colorsRes.json();
 
-                    // For any post without a color yet, generate one and save it
+                    const feedJson = await feedRes.json();
+                    const feedData = Array.isArray(feedJson) ? feedJson : [];
+
+                    const existingColors = await colorsRes.json();
                     const newColors = { ...existingColors };
                     const toSave = [];
 
@@ -54,7 +57,6 @@ export default function Home() {
                         }
                     });
 
-                    // Save new colors to backend in parallel
                     await Promise.all(
                         toSave.map((c) =>
                             fetch(`${API_URL}/users/${userId}/post-colors`, {
@@ -65,13 +67,21 @@ export default function Home() {
                         )
                     );
 
-                    setFeed(feedData);
-                    setItemColors(newColors);
+                    if (isActive) {
+                        setFeed(feedData);
+                        setItemColors(newColors);
+                    }
                 } catch (err) {
                     console.error("Failed to load feed:", err);
                 } finally {
-                    setLoading(false);
+                    if (isActive) setLoading(false);
                 }
+            };
+
+            loadFeed();
+
+            return () => {
+                isActive = false;
             };
         }, [])
     );
