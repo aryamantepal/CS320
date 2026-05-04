@@ -20,7 +20,7 @@ model User {
   createdAt DateTime @default(now())
   follows   Follow[]
   role          String       @default("user")
-  managedOrgs   Organization[] @relation("OrgManager")
+  managedOrgs   OrgManager[]
   clubRequests  ClubRequest[]
   reviewedRequests ClubRequest[] @relation("ClubRequestReviewer")
   postColor UserPostColor[]
@@ -35,8 +35,20 @@ model Organization {
   followers     Follow[]
   events        Event[]
   announcements Announcement[]
-  managerId  Int?
-  manager    User?   @relation("OrgManager", fields: [managerId], references: [id])
+  managers      OrgManager[]
+}
+
+// Join table: many-to-many between User and Organization for managers.
+// Composite PK (userId, organizationId): each column may repeat individually,
+// only the combination must be unique. Same shape as Follow.
+model OrgManager {
+  userId         Int
+  organizationId Int
+  createdAt      DateTime     @default(now())
+  user           User         @relation(fields: [userId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@id([userId, organizationId])
 }
 
 model Follow {

@@ -19,10 +19,17 @@ import {
 import { useFocusEffect } from "expo-router";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Colors } from "../../constants/Colors";
-import { getManagedOrg, API_URL } from "../../utils/auth";
+import {
+    getManagedOrg,
+    API_URL,
+    getOrgManagers,
+    addManagerByEmail,
+    getUserId,
+} from "../../utils/auth";
 import ThemedView from "../../components/ThemedView";
 import ThemedCard from "../../components/ThemedCard";
 import { useTheme } from '../../context/ThemeContext';
+import { pickAndUploadImage } from "../../utils/uploadImage";
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const BANNER_HEIGHT = 160;
 const AVATAR_SIZE = 90;
@@ -42,6 +49,7 @@ export default function YourClub() {
     const [editName, setEditName] = useState("");
     const [editDescription, setEditDescription] = useState("");
     const [editImageUrl, setEditImageUrl] = useState("");
+    const [uploadingImage, setUploadingImage] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [savingInfo, setSavingInfo] = useState(false);
 
@@ -56,6 +64,12 @@ export default function YourClub() {
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [submitting, setSubmitting] = useState(false);
 
+    // ── Managers state ──
+    const [managers, setManagers] = useState([]);
+    const [showManagersModal, setShowManagersModal] = useState(false);
+    const [newManagerEmail, setNewManagerEmail] = useState("");
+    const [addingManager, setAddingManager] = useState(false);
+
     useFocusEffect(
         useCallback(() => {
             const loadClub = async () => {
@@ -64,9 +78,10 @@ export default function YourClub() {
                     const managedOrg = await getManagedOrg();
                     if (!managedOrg) { setLoading(false); return; }
 
-                    const [orgRes, postsRes] = await Promise.all([
+                    const [orgRes, postsRes, managersList] = await Promise.all([
                         fetch(`${API_URL}/orgs/${managedOrg.id}`),
                         fetch(`${API_URL}/orgs/${managedOrg.id}/posts`),
+                        getOrgManagers(managedOrg.id).catch(() => []),
                     ]);
                     const orgData = await orgRes.json();
                     const postsData = await postsRes.json();
@@ -76,6 +91,7 @@ export default function YourClub() {
                     setEditDescription(orgData.description ?? "");
                     setEditImageUrl(orgData.imageUrl ?? "");
                     setPosts(Array.isArray(postsData) ? postsData : []);
+                    setManagers(Array.isArray(managersList) ? managersList : []);
                 } catch (err) {
                     console.error("Failed to load managed club:", err);
                 } finally {
@@ -85,6 +101,18 @@ export default function YourClub() {
             loadClub();
         }, [])
     );
+
+    const handlePickClubImage = async () => {
+        setUploadingImage(true);
+        try {
+            const url = await pickAndUploadImage("club-images", `orgs/${org.id}.jpg`);
+            if (url) setEditImageUrl(url);
+        } catch (err) {
+            Alert.alert("Error", err.message ?? "Could not upload image.");
+        } finally {
+            setUploadingImage(false);
+        }
+    };
 
     // Save club name, description, and image URL
     const handleSaveClubInfo = async () => {
@@ -111,6 +139,25 @@ export default function YourClub() {
             Alert.alert("Error", "Could not save. Try again.");
         } finally {
             setSavingInfo(false);
+        }
+    };
+
+    // Add another user as manager of this org by their email.
+    const handleAddManager = async () => {
+        const email = newManagerEmail.trim().toLowerCase();
+        if (!email) return Alert.alert("Error", "Email is required");
+        setAddingManager(true);
+        try {
+            const callerId = await getUserId();
+            const result = await addManagerByEmail(org.id, callerId, email);
+            const fresh = await getOrgManagers(org.id);
+            setManagers(fresh);
+            setNewManagerEmail("");
+            Alert.alert("Added", `${result.manager.name ?? result.manager.email} is now a manager.`);
+        } catch (err) {
+            Alert.alert("Error", err.message ?? "Could not add manager.");
+        } finally {
+            setAddingManager(false);
         }
     };
 
@@ -291,6 +338,15 @@ export default function YourClub() {
                             No description yet. Tap Edit to add one.
                         </Text>
                     )}
+
+                    <Pressable
+                        style={[styles.managersChip, { borderColor: theme.iconColor }]}
+                        onPress={() => setShowManagersModal(true)}
+                    >
+                        <Text style={{ color: theme.text, fontSize: 12, fontWeight: "600" }}>
+                            👥 {managers.length} manager{managers.length === 1 ? "" : "s"} · Tap to manage
+                        </Text>
+                    </Pressable>
                 </View>
 
                 {/* ── CREATE POST BUTTONS ── */}
@@ -320,6 +376,7 @@ export default function YourClub() {
                         posts.map((post) => (
                             <ThemedCard
                                 key={`${post.type}-${post.id}`}
+                                image={org.imageUrl}
                                 clubName={org.name}
                                 title={post.title}
                                 subtitle={
@@ -370,15 +427,23 @@ export default function YourClub() {
                             style={[styles.input, styles.textArea, { borderColor: theme.iconColor, color: theme.text }]}
                         />
 
-                        <Text style={[styles.fieldLabel, { color: theme.iconColor }]}>Profile Image URL</Text>
-                        <TextInput
-                            value={editImageUrl}
-                            onChangeText={setEditImageUrl}
-                            placeholder="https://example.com/image.png"
-                            placeholderTextColor={theme.iconColor}
-                            autoCapitalize="none"
-                            style={[styles.input, { borderColor: theme.iconColor, color: theme.text }]}
-                        />
+                        <Text style={[styles.fieldLabel, { color: theme.iconColor }]}>Club Photo</Text>
+                        <Pressable style={styles.imagePickerBtn} onPress={handlePickClubImage} disabled={uploadingImage}>
+                            {editImageUrl ? (
+                                <Image source={{ uri: editImageUrl }} style={styles.imagePickerPreview} />
+                            ) : (
+                                <View style={[styles.imagePickerPlaceholder, { borderColor: theme.iconColor }]}>
+                                    <Text style={{ color: theme.iconColor, fontSize: 13 }}>
+                                        {uploadingImage ? "Uploading..." : "Tap to choose photo"}
+                                    </Text>
+                                </View>
+                            )}
+                            {editImageUrl ? (
+                                <Text style={[styles.changePhotoLabel, { color: theme.iconColor }]}>
+                                    {uploadingImage ? "Uploading..." : "Tap to change"}
+                                </Text>
+                            ) : null}
+                        </Pressable>
 
                         <View style={styles.modalButtons}>
                             <Pressable
@@ -534,6 +599,94 @@ export default function YourClub() {
                     </View>
                 </KeyboardAvoidingView>
             </Modal>
+
+            {/* ── MANAGERS MODAL ── */}
+            <Modal
+                visible={showManagersModal}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setShowManagersModal(false)}
+            >
+                <KeyboardAvoidingView
+                    style={styles.modalOverlay}
+                    behavior={Platform.OS === "ios" ? "padding" : undefined}
+                >
+                    <View style={[styles.modalBox, { backgroundColor: theme.uiBackground }]}>
+                        <Text style={[styles.modalTitle, { color: theme.text }]}>Managers</Text>
+
+                        <Text style={[styles.fieldLabel, { color: theme.iconColor }]}>
+                            Current managers ({managers.length})
+                        </Text>
+                        <View style={[styles.managersList, { borderColor: theme.iconColor }]}>
+                            {managers.length === 0 ? (
+                                <Text style={{ color: theme.iconColor, fontStyle: "italic", padding: 12 }}>
+                                    No managers yet.
+                                </Text>
+                            ) : (
+                                managers.map((m, i) => (
+                                    <View
+                                        key={m.id}
+                                        style={[
+                                            styles.managerRow,
+                                            { borderBottomColor: theme.iconColor },
+                                            i === managers.length - 1 && { borderBottomWidth: 0 },
+                                        ]}
+                                    >
+                                        <Image
+                                            source={
+                                                m.imageUrl
+                                                    ? { uri: m.imageUrl }
+                                                    : require("../../assets/adaptive-icon.png")
+                                            }
+                                            style={styles.managerAvatar}
+                                        />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={{ color: theme.text, fontSize: 14, fontWeight: "600" }}>
+                                                {m.name ?? m.email}
+                                            </Text>
+                                            <Text style={{ color: theme.iconColor, fontSize: 12 }}>
+                                                {m.email}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                ))
+                            )}
+                        </View>
+
+                        <Text style={[styles.fieldLabel, { color: theme.iconColor }]}>Add a manager by email</Text>
+                        <TextInput
+                            value={newManagerEmail}
+                            onChangeText={setNewManagerEmail}
+                            placeholder="user@example.com"
+                            placeholderTextColor={theme.iconColor}
+                            autoCapitalize="none"
+                            keyboardType="email-address"
+                            style={[styles.input, { borderColor: theme.iconColor, color: theme.text }]}
+                        />
+
+                        <View style={styles.modalButtons}>
+                            <Pressable
+                                style={[styles.modalBtn, { borderColor: theme.iconColor, borderWidth: 1 }]}
+                                onPress={() => {
+                                    setShowManagersModal(false);
+                                    setNewManagerEmail("");
+                                }}
+                            >
+                                <Text style={{ color: theme.text }}>Close</Text>
+                            </Pressable>
+                            <Pressable
+                                style={[styles.modalBtn, { backgroundColor: "#007AFF" }]}
+                                onPress={handleAddManager}
+                                disabled={addingManager}
+                            >
+                                <Text style={{ color: "#fff", fontWeight: "600" }}>
+                                    {addingManager ? "Adding..." : "Add"}
+                                </Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                </KeyboardAvoidingView>
+            </Modal>
         </ThemedView>
     );
 }
@@ -564,6 +717,14 @@ const styles = StyleSheet.create({
     textArea: { height: 90, textAlignVertical: "top" },
     modalButtons: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 8 },
     modalBtn: { borderRadius: 10, paddingVertical: 10, paddingHorizontal: 20 },
-    suggestionsBox: { borderWidth: 1, borderRadius: 10, marginTop: -8, overflow: "hidden", maxHeight: 200,},
+    suggestionsBox: { borderWidth: 1, borderRadius: 10, marginTop: -8, overflow: "hidden", maxHeight: 200, },
     suggestionRow: { padding: 12, borderBottomWidth: 1 },
+    imagePickerBtn: { alignItems: "center", marginBottom: 4 },
+    imagePickerPreview: { width: 100, height: 100, borderRadius: 50 },
+    imagePickerPlaceholder: { width: 100, height: 100, borderRadius: 50, borderWidth: 1, borderStyle: "dashed", justifyContent: "center", alignItems: "center" },
+    changePhotoLabel: { fontSize: 12, marginTop: 6 },
+    managersChip: { alignSelf: "flex-start", borderWidth: 1, borderRadius: 14, paddingVertical: 6, paddingHorizontal: 12, marginTop: 12 },
+    managersList: { borderWidth: 1, borderRadius: 10, overflow: "hidden", maxHeight: 220 },
+    managerRow: { flexDirection: "row", alignItems: "center", padding: 10, borderBottomWidth: 1, gap: 10 },
+    managerAvatar: { width: 36, height: 36, borderRadius: 18 },
 });

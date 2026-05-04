@@ -72,7 +72,7 @@ app.post("/register", async (req, res) => {
 app.post("/login", async (req, res) => {
     const { email, password } = req.body;
     try {
-        const user = await prisma.user.findFirst({
+        const row = await prisma.user.findFirst({
             where: { email, password },
             select: {
                 id: true,
@@ -81,14 +81,24 @@ app.post("/login", async (req, res) => {
                 imageUrl: true,
                 createdAt: true,
                 role: true,
-                // managedOrgs is now a list (one manager can run multiple clubs)
+                // managedOrgs goes through the OrgManager join table (many-to-many)
                 managedOrgs: {
-                    select: { id: true, name: true, description: true, imageUrl: true },
-                    orderBy: { name: "asc" },
+                    select: {
+                        organization: {
+                            select: { id: true, name: true, description: true, imageUrl: true },
+                        },
+                    },
                 },
             },
         });
-        if (!user) return res.status(401).json({ error: "Invalid email or password" });
+        if (!row) return res.status(401).json({ error: "Invalid email or password" });
+        // Flatten join rows so the API shape stays { id, name, description, imageUrl }[]
+        const user = {
+            ...row,
+            managedOrgs: row.managedOrgs
+                .map((m) => m.organization)
+                .sort((a, b) => a.name.localeCompare(b.name)),
+        };
         res.json({ success: true, user });
     } catch (err) {
         console.error(err);
@@ -290,12 +300,92 @@ app.patch("/orgs/:orgId", async (req, res) => {
     }
 });
 
+// ── ORG MANAGERS (many-to-many) ───────────────────────────────────────────────
+
+// List managers of an org. Public read.
+app.get("/orgs/:orgId/managers", async (req, res) => {
+    const orgId = parseInt(req.params.orgId);
+    if (isNaN(orgId)) return res.status(400).json({ error: "Invalid org id" });
+    try {
+        const rows = await prisma.orgManager.findMany({
+            where: { organizationId: orgId },
+            select: {
+                createdAt: true,
+                user: { select: { id: true, name: true, email: true, imageUrl: true } },
+            },
+            orderBy: { createdAt: "asc" },
+        });
+        res.json(rows.map((r) => ({ ...r.user, addedAt: r.createdAt })));
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// Add a manager to an org by email. Caller must already manage this org —
+// we verify by looking up an OrgManager row for (requestingUserId, orgId).
+// Bumps the new manager's role to "manager" if they were a regular user.
+app.post("/orgs/:orgId/managers", async (req, res) => {
+    const orgId = parseInt(req.params.orgId);
+    if (isNaN(orgId)) return res.status(400).json({ error: "Invalid org id" });
+    const { email, requestingUserId } = req.body ?? {};
+    const callerId = Number(requestingUserId);
+    if (!email || !Number.isInteger(callerId)) {
+        return res.status(400).json({ error: "email and requestingUserId are required" });
+    }
+    try {
+        // Permission: caller must already be a manager of this org.
+        const callerRow = await prisma.orgManager.findUnique({
+            where: { userId_organizationId: { userId: callerId, organizationId: orgId } },
+        });
+        if (!callerRow) {
+            return res.status(403).json({ error: "Only existing managers can add new managers" });
+        }
+
+        const newManager = await prisma.user.findUnique({
+            where: { email: String(email).trim().toLowerCase() },
+        });
+        if (!newManager) return res.status(404).json({ error: "No user with that email" });
+
+        const existing = await prisma.orgManager.findUnique({
+            where: { userId_organizationId: { userId: newManager.id, organizationId: orgId } },
+        });
+        if (existing) return res.status(409).json({ error: "User is already a manager of this club" });
+
+        await prisma.$transaction(async (tx) => {
+            await tx.orgManager.create({
+                data: { userId: newManager.id, organizationId: orgId },
+            });
+            // Bump role to "manager" only if they're a plain user (admins stay admins).
+            if (newManager.role === "user") {
+                await tx.user.update({
+                    where: { id: newManager.id },
+                    data: { role: "manager" },
+                });
+            }
+        });
+
+        res.json({
+            success: true,
+            manager: {
+                id: newManager.id,
+                name: newManager.name,
+                email: newManager.email,
+                imageUrl: newManager.imageUrl,
+            },
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
 // CHANGED: update user profile info (name, imageUrl)
 app.patch("/users/:userId", async (req, res) => {
     const userId = parseInt(req.params.userId);
     const { imageUrl, name } = req.body;
     try {
-        const user = await prisma.user.update({
+        const row = await prisma.user.update({
             where: { id: userId },
             data: {
                 ...(name !== undefined && { name }),
@@ -308,11 +398,20 @@ app.patch("/users/:userId", async (req, res) => {
                 role: true,
                 imageUrl: true,
                 managedOrgs: {
-                    select: { id: true, name: true, description: true, imageUrl: true },
-                    orderBy: { name: "asc" },
+                    select: {
+                        organization: {
+                            select: { id: true, name: true, description: true, imageUrl: true },
+                        },
+                    },
                 },
             },
         });
+        const user = {
+            ...row,
+            managedOrgs: row.managedOrgs
+                .map((m) => m.organization)
+                .sort((a, b) => a.name.localeCompare(b.name)),
+        };
         res.json({ success: true, user });
     } catch (err) {
         console.error(err);
@@ -460,8 +559,12 @@ app.post("/admin/club-requests/:id/approve", async (req, res) => {
                 data: {
                     name: request.clubName,
                     description: request.description,
-                    managerId: request.userId,
                 },
+            });
+            // The requester becomes the first manager. Additional managers can be
+            // added later via POST /orgs/:orgId/managers.
+            await tx.orgManager.create({
+                data: { userId: request.userId, organizationId: org.id },
             });
 
             // Only bump role if they aren't already admin (admins stay admins).
@@ -604,12 +707,12 @@ app.get("/feed/:userId", async (req, res) => {
         const [events, announcements] = await Promise.all([
             prisma.event.findMany({
                 where: { organizationId: { in: orgIds } },
-                include: { organization: { select: { name: true } } },
+                include: { organization: { select: { name: true, imageUrl: true } } },
                 orderBy: { createdAt: "desc" },
             }),
             prisma.announcement.findMany({
                 where: { organizationId: { in: orgIds } },
-                include: { organization: { select: { name: true } } },
+                include: { organization: { select: { name: true, imageUrl: true } } },
                 orderBy: { createdAt: "desc" },
             }),
         ]);

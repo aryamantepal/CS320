@@ -98,6 +98,7 @@ export default function Home() {
                 {feed.map((item) => (
                     <ThemedCard
                         key={`${item.type}-${item.id}`}
+                        image={item.organization.imageUrl}
                         clubName={item.organization.name}
                         title={item.title}
                         subtitle={
