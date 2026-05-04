@@ -1,6 +1,6 @@
 // CHANGED: yourClub.jsx is now the full manager dashboard —
 // edit club name, description, image URL, and create events/announcements
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
     View,
     Text,
@@ -17,8 +17,15 @@ import {
     Alert,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { Colors } from "../../constants/Colors";
-import { getManagedOrg, API_URL } from "../../utils/auth";
+import {
+    getManagedOrg,
+    API_URL,
+    getOrgManagers,
+    addManagerByEmail,
+    getUserId,
+} from "../../utils/auth";
 import ThemedView from "../../components/ThemedView";
 import ThemedCard from "../../components/ThemedCard";
 import { useTheme } from '../../context/ThemeContext';
@@ -28,7 +35,11 @@ const BANNER_HEIGHT = 160;
 const AVATAR_SIZE = 90;
 
 export default function YourClub() {
-     const { theme } = useTheme();
+    const { isDarkMode } = useTheme();
+    const theme = Colors[isDarkMode ? "dark" : "light"] ?? Colors.light;
+
+    //Check location when user stops typing
+    const searchTimeout = useRef(null);
 
     const [org, setOrg] = useState(null);
     const [posts, setPosts] = useState([]);
@@ -47,8 +58,17 @@ export default function YourClub() {
     const [postTitle, setPostTitle] = useState("");
     const [postBody, setPostBody] = useState("");
     const [postLocation, setPostLocation] = useState("");
-    const [postDate, setPostDate] = useState("");
+    const [locationSuggestions, setLocationSuggestions] = useState([]);
+    const [locationSearching, setLocationSearching] = useState(false);
+    const [postDate, setPostDate] = useState(new Date());
+    const [showDatePicker, setShowDatePicker] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+
+    // ── Managers state ──
+    const [managers, setManagers] = useState([]);
+    const [showManagersModal, setShowManagersModal] = useState(false);
+    const [newManagerEmail, setNewManagerEmail] = useState("");
+    const [addingManager, setAddingManager] = useState(false);
 
     useFocusEffect(
         useCallback(() => {
@@ -58,9 +78,10 @@ export default function YourClub() {
                     const managedOrg = await getManagedOrg();
                     if (!managedOrg) { setLoading(false); return; }
 
-                    const [orgRes, postsRes] = await Promise.all([
+                    const [orgRes, postsRes, managersList] = await Promise.all([
                         fetch(`${API_URL}/orgs/${managedOrg.id}`),
                         fetch(`${API_URL}/orgs/${managedOrg.id}/posts`),
+                        getOrgManagers(managedOrg.id).catch(() => []),
                     ]);
                     const orgData = await orgRes.json();
                     const postsData = await postsRes.json();
@@ -70,6 +91,7 @@ export default function YourClub() {
                     setEditDescription(orgData.description ?? "");
                     setEditImageUrl(orgData.imageUrl ?? "");
                     setPosts(Array.isArray(postsData) ? postsData : []);
+                    setManagers(Array.isArray(managersList) ? managersList : []);
                 } catch (err) {
                     console.error("Failed to load managed club:", err);
                 } finally {
@@ -120,6 +142,61 @@ export default function YourClub() {
         }
     };
 
+    // Add another user as manager of this org by their email.
+    const handleAddManager = async () => {
+        const email = newManagerEmail.trim().toLowerCase();
+        if (!email) return Alert.alert("Error", "Email is required");
+        setAddingManager(true);
+        try {
+            const callerId = await getUserId();
+            const result = await addManagerByEmail(org.id, callerId, email);
+            const fresh = await getOrgManagers(org.id);
+            setManagers(fresh);
+            setNewManagerEmail("");
+            Alert.alert("Added", `${result.manager.name ?? result.manager.email} is now a manager.`);
+        } catch (err) {
+            Alert.alert("Error", err.message ?? "Could not add manager.");
+        } finally {
+            setAddingManager(false);
+        }
+    };
+
+    // Search for location suggestions using Photon API as user types in event location field
+    const searchLocation = (text) => {
+        setPostLocation(text);
+        setLocationSuggestions([]);
+
+        if (text.length < 3) return;
+
+        // Cancel previous pending search
+        if (searchTimeout.current) clearTimeout(searchTimeout.current);
+
+        // Wait 500ms after user stops typing before searching
+        searchTimeout.current = setTimeout(async () => {
+            setLocationSearching(true);
+            try {
+                const res = await fetch(
+                    `https://photon.komoot.io/api/?q=${encodeURIComponent(text)}&limit=5`
+                );
+                const data = await res.json();
+                // Photon returns { features: [...] } instead of an array
+                const suggestions = (data.features ?? []).map((f) => ({
+                    display_name: [
+                        f.properties.name,
+                        f.properties.street,
+                        f.properties.city,
+                        f.properties.country,
+                    ].filter(Boolean).join(", "),
+                }));
+                setLocationSuggestions(suggestions);
+            } catch (err) {
+                console.error("Location search failed:", err);
+            } finally {
+                setLocationSearching(false);
+            }
+        }, 500);
+    };
+
     // Submit a new event or announcement
     const handleSubmitPost = async () => {
         if (!postTitle.trim()) return Alert.alert("Error", "Title is required");
@@ -128,15 +205,17 @@ export default function YourClub() {
             if (modalType === "event") {
                 if (!postLocation.trim()) return Alert.alert("Error", "Location is required");
                 if (!postDate.trim()) return Alert.alert("Error", "Date is required");
+
                 await fetch(`${API_URL}/orgs/${org.id}/events`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         title: postTitle,
                         location: postLocation,
-                        startDateTime: new Date(postDate).toISOString(),
+                        startDateTime: postDate.toISOString(),
                     }),
                 });
+
             } else {
                 if (!postBody.trim()) return Alert.alert("Error", "Body is required");
                 await fetch(`${API_URL}/orgs/${org.id}/announcements`, {
@@ -155,7 +234,7 @@ export default function YourClub() {
             setPostTitle("");
             setPostBody("");
             setPostLocation("");
-            setPostDate("");
+            setPostDate(new Date());
             setModalType(null);
         } catch (err) {
             console.error("Failed to create post:", err);
@@ -259,6 +338,15 @@ export default function YourClub() {
                             No description yet. Tap Edit to add one.
                         </Text>
                     )}
+
+                    <Pressable
+                        style={[styles.managersChip, { borderColor: theme.iconColor }]}
+                        onPress={() => setShowManagersModal(true)}
+                    >
+                        <Text style={{ color: theme.text, fontSize: 12, fontWeight: "600" }}>
+                            👥 {managers.length} manager{managers.length === 1 ? "" : "s"} · Tap to manage
+                        </Text>
+                    </Pressable>
                 </View>
 
                 {/* ── CREATE POST BUTTONS ── */}
@@ -296,6 +384,7 @@ export default function YourClub() {
                                         ? `📍 ${post.location} · ${new Date(post.startDateTime).toLocaleDateString()}`
                                         : post.body
                                 }
+                                bannerColor={post.color ?? undefined}
                                 onPress={() => { }}   // managers viewing their own posts — no detail nav needed
                                 onDelete={() => handleDeletePost(post.type, post.id)}
                             />
@@ -382,7 +471,11 @@ export default function YourClub() {
                 visible={modalType !== null}
                 animationType="slide"
                 transparent={true}
-                onRequestClose={() => setModalType(null)}
+                onRequestClose={() => {
+                    setModalType(null);
+                    setLocationSuggestions([]);
+                    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+                }}
             >
                 <KeyboardAvoidingView
                     style={styles.modalOverlay}
@@ -403,20 +496,76 @@ export default function YourClub() {
 
                         {modalType === "event" ? (
                             <>
+                                {/* REMOVE the old location TextInput and replace with: */}
+                                <Text style={[styles.fieldLabel, { color: theme.iconColor }]}>Location</Text>
                                 <TextInput
-                                    placeholder="Location"
+                                    placeholder="Search for a location..."
                                     placeholderTextColor={theme.iconColor}
                                     value={postLocation}
-                                    onChangeText={setPostLocation}
+                                    onChangeText={searchLocation}
                                     style={[styles.input, { borderColor: theme.iconColor, color: theme.text }]}
                                 />
-                                <TextInput
-                                    placeholder="Date (YYYY-MM-DD)"
-                                    placeholderTextColor={theme.iconColor}
-                                    value={postDate}
-                                    onChangeText={setPostDate}
-                                    style={[styles.input, { borderColor: theme.iconColor, color: theme.text }]}
-                                />
+
+                                {/* Suggestions dropdown */}
+                                {locationSuggestions.length > 0 && (
+                                    <View style={[styles.suggestionsBox, { backgroundColor: theme.uiBackground, borderColor: theme.iconColor }]}>
+                                        {locationSearching && (
+                                            <ActivityIndicator size="small" style={{ padding: 8 }} />
+                                        )}
+                                        {locationSuggestions.map((place, index) => (
+                                            <Pressable
+                                                key={index}
+                                                style={[
+                                                    styles.suggestionRow,
+                                                    { borderBottomColor: theme.iconColor },
+                                                    index === locationSuggestions.length - 1 && { borderBottomWidth: 0 },
+                                                ]}
+                                                onPress={() => {
+                                                    setPostLocation(place.display_name);
+                                                    setLocationSuggestions([]);
+                                                }}
+                                            >
+                                                <Text style={{ color: theme.text, fontSize: 13 }} numberOfLines={2}>
+                                                    📍 {place.display_name}
+                                                </Text>
+                                            </Pressable>
+                                        ))}
+                                    </View>
+                                )}
+
+                                <Text style={[styles.fieldLabel, { color: theme.iconColor }]}>Date & Time</Text>
+
+                                <Pressable
+                                    onPress={() => setShowDatePicker(true)}
+                                    style={[styles.input, {
+                                        borderColor: theme.iconColor,
+                                        justifyContent: "center",
+                                    }]}
+                                >
+                                    <Text style={{ color: theme.text }}>
+                                        📅 {postDate.toLocaleString("en-US", {
+                                            weekday: "short",
+                                            month: "short",
+                                            day: "numeric",
+                                            year: "numeric",
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                        })}
+                                    </Text>
+                                </Pressable>
+
+                                {showDatePicker && (
+                                    <DateTimePicker
+                                        value={postDate}
+                                        mode="datetime"
+                                        display="default"
+                                        minimumDate={new Date()}
+                                        onChange={(event, selected) => {
+                                            setShowDatePicker(false);
+                                            if (selected) setPostDate(selected);
+                                        }}
+                                    />
+                                )}
                             </>
                         ) : (
                             <TextInput
@@ -444,6 +593,94 @@ export default function YourClub() {
                             >
                                 <Text style={{ color: "#fff", fontWeight: "600" }}>
                                     {submitting ? "Posting..." : "Post"}
+                                </Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                </KeyboardAvoidingView>
+            </Modal>
+
+            {/* ── MANAGERS MODAL ── */}
+            <Modal
+                visible={showManagersModal}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setShowManagersModal(false)}
+            >
+                <KeyboardAvoidingView
+                    style={styles.modalOverlay}
+                    behavior={Platform.OS === "ios" ? "padding" : undefined}
+                >
+                    <View style={[styles.modalBox, { backgroundColor: theme.uiBackground }]}>
+                        <Text style={[styles.modalTitle, { color: theme.text }]}>Managers</Text>
+
+                        <Text style={[styles.fieldLabel, { color: theme.iconColor }]}>
+                            Current managers ({managers.length})
+                        </Text>
+                        <View style={[styles.managersList, { borderColor: theme.iconColor }]}>
+                            {managers.length === 0 ? (
+                                <Text style={{ color: theme.iconColor, fontStyle: "italic", padding: 12 }}>
+                                    No managers yet.
+                                </Text>
+                            ) : (
+                                managers.map((m, i) => (
+                                    <View
+                                        key={m.id}
+                                        style={[
+                                            styles.managerRow,
+                                            { borderBottomColor: theme.iconColor },
+                                            i === managers.length - 1 && { borderBottomWidth: 0 },
+                                        ]}
+                                    >
+                                        <Image
+                                            source={
+                                                m.imageUrl
+                                                    ? { uri: m.imageUrl }
+                                                    : require("../../assets/adaptive-icon.png")
+                                            }
+                                            style={styles.managerAvatar}
+                                        />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={{ color: theme.text, fontSize: 14, fontWeight: "600" }}>
+                                                {m.name ?? m.email}
+                                            </Text>
+                                            <Text style={{ color: theme.iconColor, fontSize: 12 }}>
+                                                {m.email}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                ))
+                            )}
+                        </View>
+
+                        <Text style={[styles.fieldLabel, { color: theme.iconColor }]}>Add a manager by email</Text>
+                        <TextInput
+                            value={newManagerEmail}
+                            onChangeText={setNewManagerEmail}
+                            placeholder="user@example.com"
+                            placeholderTextColor={theme.iconColor}
+                            autoCapitalize="none"
+                            keyboardType="email-address"
+                            style={[styles.input, { borderColor: theme.iconColor, color: theme.text }]}
+                        />
+
+                        <View style={styles.modalButtons}>
+                            <Pressable
+                                style={[styles.modalBtn, { borderColor: theme.iconColor, borderWidth: 1 }]}
+                                onPress={() => {
+                                    setShowManagersModal(false);
+                                    setNewManagerEmail("");
+                                }}
+                            >
+                                <Text style={{ color: theme.text }}>Close</Text>
+                            </Pressable>
+                            <Pressable
+                                style={[styles.modalBtn, { backgroundColor: "#007AFF" }]}
+                                onPress={handleAddManager}
+                                disabled={addingManager}
+                            >
+                                <Text style={{ color: "#fff", fontWeight: "600" }}>
+                                    {addingManager ? "Adding..." : "Add"}
                                 </Text>
                             </Pressable>
                         </View>
@@ -480,8 +717,14 @@ const styles = StyleSheet.create({
     textArea: { height: 90, textAlignVertical: "top" },
     modalButtons: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 8 },
     modalBtn: { borderRadius: 10, paddingVertical: 10, paddingHorizontal: 20 },
+    suggestionsBox: { borderWidth: 1, borderRadius: 10, marginTop: -8, overflow: "hidden", maxHeight: 200, },
+    suggestionRow: { padding: 12, borderBottomWidth: 1 },
     imagePickerBtn: { alignItems: "center", marginBottom: 4 },
     imagePickerPreview: { width: 100, height: 100, borderRadius: 50 },
     imagePickerPlaceholder: { width: 100, height: 100, borderRadius: 50, borderWidth: 1, borderStyle: "dashed", justifyContent: "center", alignItems: "center" },
     changePhotoLabel: { fontSize: 12, marginTop: 6 },
+    managersChip: { alignSelf: "flex-start", borderWidth: 1, borderRadius: 14, paddingVertical: 6, paddingHorizontal: 12, marginTop: 12 },
+    managersList: { borderWidth: 1, borderRadius: 10, overflow: "hidden", maxHeight: 220 },
+    managerRow: { flexDirection: "row", alignItems: "center", padding: 10, borderBottomWidth: 1, gap: 10 },
+    managerAvatar: { width: 36, height: 36, borderRadius: 18 },
 });

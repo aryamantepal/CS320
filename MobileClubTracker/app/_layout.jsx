@@ -2,6 +2,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { useEffect, useState } from "react";
 import { getUser } from "../utils/auth";
 import { ThemeProvider } from "../context/ThemeContext";
+import { StatusBar } from "react-native";
 
 // Patch global fetch so all requests skip the ngrok free-tier browser warning.
 // Safe no-op against non-ngrok hosts; the header is just ignored elsewhere.
@@ -49,6 +50,7 @@ export default function RootLayout() {
     return (
         <ThemeProvider>
             <AuthGate>
+                <StatusBar style="auto" />
                 <Stack screenOptions={{ headerShown: false }} />
             </AuthGate>
         </ThemeProvider>

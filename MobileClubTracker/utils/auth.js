@@ -105,6 +105,26 @@ export const rejectClubRequest = async (adminUserId, requestId, reason = null) =
     return data;
 };
 
+// List managers of an org.
+export const getOrgManagers = async (orgId) => {
+    const response = await fetch(`${API_URL}/orgs/${orgId}/managers`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    return data;
+};
+
+// Add a manager to an org by email. The current user must already manage the org.
+export const addManagerByEmail = async (orgId, requestingUserId, email) => {
+    const response = await fetch(`${API_URL}/orgs/${orgId}/managers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, requestingUserId }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    return data;
+};
+
 export const updateUser = async (userId, fields) => {
     const response = await fetch(`${API_URL}/users/${userId}`, {
         method: "PATCH",
