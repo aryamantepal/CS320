@@ -23,6 +23,7 @@ model User {
   managedOrgs   Organization[] @relation("OrgManager")
   clubRequests  ClubRequest[]
   reviewedRequests ClubRequest[] @relation("ClubRequestReviewer")
+  postColor UserPostColor[]
 }
 
 model Organization {
@@ -82,4 +83,15 @@ model ClubRequest {
   reviewedById    Int?
   user            User     @relation(fields: [userId], references: [id])
   reviewedBy      User?    @relation("ClubRequestReviewer", fields: [reviewedById], references: [id])
+}
+
+model UserPostColor {
+    userId   Int
+    postType String  // "event" or "announcement"
+    postId   Int
+    color    String
+
+    user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@id([userId, postType, postId])
 }

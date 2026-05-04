@@ -13,17 +13,24 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ── COLOR HELPER ──────────────────────────────────────────────────────────────
-// Simple helper to assign a consistent color to each event and announcement.
-function randomRgb() {
-    const r = Math.floor(Math.random() * 120) + 80;  // range: 80-200
-    const g = Math.floor(Math.random() * 120) + 80;
-    const b = Math.floor(Math.random() * 120) + 80;
-    return {
-        base: `rgb(${r},${g},${b})`,
-        light: `rgb(${Math.round(r+(255-r)*0.4)},${Math.round(g+(255-g)*0.4)},${Math.round(b+(255-b)*0.4)})`,
-    };
-}
+// For already existing events/announcements without colors, you can run this in a psql console:
+/*
+npx prisma db execute --stdin <<'EOF'
+UPDATE "Event"
+SET color = 'rgb(' || 
+    (floor(random() * 120) + 80 )::int || ',' || 
+    (floor(random() * 120) + 80 )::int || ',' || 
+    (floor(random() * 120) + 80 )::int || ')'
+WHERE color IS NULL;
+
+UPDATE "Announcement"
+SET color = 'rgb(' || 
+    (floor(random() * 120) + 80 )::int || ',' || 
+    (floor(random() * 120) + 80 )::int || ',' || 
+    (floor(random() * 120) + 80 )::int || ')'
+WHERE color IS NULL;
+EOF
+*/
 
 // ── ADMIN HELPER ──────────────────────────────────────────────────────────────
 // Looks up the caller by `adminUserId` (from body, query, or x-admin-user-id header)
@@ -156,14 +163,12 @@ app.post("/orgs/:orgId/events", async (req, res) => {
     if (isNaN(orgId)) return res.status(400).json({ error: "Invalid org id" });
     const { title, location, startDateTime } = req.body;
     try {
-        const { base } = randomRgb();
         const event = await prisma.event.create({
             data: {
                 title,
                 location,
                 startDateTime: new Date(startDateTime),
                 organizationId: orgId,
-                color: base,
             },
         });
 
@@ -201,13 +206,11 @@ app.post("/orgs/:orgId/announcements", async (req, res) => {
     if (isNaN(orgId)) return res.status(400).json({ error: "Invalid org id" });
     const { title, body } = req.body;
     try {
-        const { light } = randomRgb();
         const announcement = await prisma.announcement.create({
             data: {
                 title,
                 body,
                 organizationId: orgId,
-                color: light,
             },
         });
 
@@ -351,6 +354,41 @@ app.patch("/users/:userId/push-token", async (req, res) => {
         });
         res.json({ success: true });
     } catch (err) {
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// Get all post colors for a user
+app.get("/users/:userId/post-colors", async (req, res) => {
+    const userId = parseInt(req.params.userId);
+    if (isNaN(userId)) return res.status(400).json({ error: "Invalid user id" });
+    try {
+        const colors = await prisma.userPostColor.findMany({ where: { userId } });
+        // Return as a map: { "event-1": "rgb(...)", "announcement-3": "rgb(...)" }
+        const map: Record<string, string> = {};
+        colors.forEach((c) => {
+            map[`${c.postType}-${c.postId}`] = c.color;
+        });
+        res.json(map);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// Save a color for a specific post for a user
+app.post("/users/:userId/post-colors", async (req, res) => {
+    const userId = parseInt(req.params.userId);
+    const { postType, postId, color } = req.body;
+    try {
+        await prisma.userPostColor.upsert({
+            where: { userId_postType_postId: { userId, postType, postId } },
+            update: { color },
+            create: { userId, postType, postId, color },
+        });
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
         res.status(500).json({ error: "Server error" });
     }
 });

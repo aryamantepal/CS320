@@ -13,6 +13,17 @@ export default function Home() {
 
     const [feed, setFeed] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [itemColors, setItemColors] = useState({});
+
+    function randomRgb() {
+        const r = Math.floor(Math.random() * 120) + 80;
+        const g = Math.floor(Math.random() * 120) + 80;
+        const b = Math.floor(Math.random() * 120) + 80;
+        return {
+            base: `rgb(${r},${g},${b})`,
+            light: `rgb(${Math.round(r + (255 - r) * 0.4)},${Math.round(g + (255 - g) * 0.4)},${Math.round(b + (255 - b) * 0.4)})`,
+        };
+    }
 
     useFocusEffect(
         useCallback(() => {
@@ -22,16 +33,46 @@ export default function Home() {
                 if (!userId) { setLoading(false); return; }
 
                 try {
-                    const res = await fetch(`${API_URL}/feed/${userId}`);
-                    const data = await res.json();
-                    setFeed(Array.isArray(data) ? data : []);
+                    // Fetch feed and existing user colors in parallel
+                    const [feedRes, colorsRes] = await Promise.all([
+                        fetch(`${API_URL}/feed/${userId}`),
+                        fetch(`${API_URL}/users/${userId}/post-colors`),
+                    ]);
+                    const feedData = Array.isArray(await feedRes.json()) ? await feedRes.json() : [];
+                    const existingColors = await colorsRes.json();
+
+                    // For any post without a color yet, generate one and save it
+                    const newColors = { ...existingColors };
+                    const toSave = [];
+
+                    feedData.forEach((item) => {
+                        const key = `${item.type}-${item.id}`;
+                        if (!newColors[key]) {
+                            const { base, light } = randomRgb();
+                            newColors[key] = item.type === "event" ? base : light;
+                            toSave.push({ postType: item.type, postId: item.id, color: newColors[key] });
+                        }
+                    });
+
+                    // Save new colors to backend in parallel
+                    await Promise.all(
+                        toSave.map((c) =>
+                            fetch(`${API_URL}/users/${userId}/post-colors`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ ...c, userId }),
+                            })
+                        )
+                    );
+
+                    setFeed(feedData);
+                    setItemColors(newColors);
                 } catch (err) {
                     console.error("Failed to load feed:", err);
                 } finally {
                     setLoading(false);
                 }
             };
-            loadFeed();
         }, [])
     );
 
@@ -64,7 +105,7 @@ export default function Home() {
                                 ? `📍 ${item.location} · ${new Date(item.startDateTime).toLocaleDateString()}`
                                 : item.body
                         }
-                        bannerColor={item.color ?? undefined}
+                        bannerColor={itemColors[`${item.type}-${item.id}`] ?? undefined}
                         onPress={() =>
                             router.push({
                                 pathname: "/postDetail",
