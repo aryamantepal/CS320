@@ -23,6 +23,7 @@ import { getManagedOrg, API_URL } from "../../utils/auth";
 import ThemedView from "../../components/ThemedView";
 import ThemedCard from "../../components/ThemedCard";
 import { useTheme } from '../../context/ThemeContext';
+import { pickAndUploadImage } from "../../utils/uploadImage";
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const BANNER_HEIGHT = 160;
 const AVATAR_SIZE = 90;
@@ -42,6 +43,7 @@ export default function YourClub() {
     const [editName, setEditName] = useState("");
     const [editDescription, setEditDescription] = useState("");
     const [editImageUrl, setEditImageUrl] = useState("");
+    const [uploadingImage, setUploadingImage] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [savingInfo, setSavingInfo] = useState(false);
 
@@ -85,6 +87,18 @@ export default function YourClub() {
             loadClub();
         }, [])
     );
+
+    const handlePickClubImage = async () => {
+        setUploadingImage(true);
+        try {
+            const url = await pickAndUploadImage("club-images", `orgs/${org.id}.jpg`);
+            if (url) setEditImageUrl(url);
+        } catch (err) {
+            Alert.alert("Error", err.message ?? "Could not upload image.");
+        } finally {
+            setUploadingImage(false);
+        }
+    };
 
     // Save club name, description, and image URL
     const handleSaveClubInfo = async () => {
@@ -320,6 +334,7 @@ export default function YourClub() {
                         posts.map((post) => (
                             <ThemedCard
                                 key={`${post.type}-${post.id}`}
+                                image={org.imageUrl}
                                 clubName={org.name}
                                 title={post.title}
                                 subtitle={
@@ -370,15 +385,23 @@ export default function YourClub() {
                             style={[styles.input, styles.textArea, { borderColor: theme.iconColor, color: theme.text }]}
                         />
 
-                        <Text style={[styles.fieldLabel, { color: theme.iconColor }]}>Profile Image URL</Text>
-                        <TextInput
-                            value={editImageUrl}
-                            onChangeText={setEditImageUrl}
-                            placeholder="https://example.com/image.png"
-                            placeholderTextColor={theme.iconColor}
-                            autoCapitalize="none"
-                            style={[styles.input, { borderColor: theme.iconColor, color: theme.text }]}
-                        />
+                        <Text style={[styles.fieldLabel, { color: theme.iconColor }]}>Club Photo</Text>
+                        <Pressable style={styles.imagePickerBtn} onPress={handlePickClubImage} disabled={uploadingImage}>
+                            {editImageUrl ? (
+                                <Image source={{ uri: editImageUrl }} style={styles.imagePickerPreview} />
+                            ) : (
+                                <View style={[styles.imagePickerPlaceholder, { borderColor: theme.iconColor }]}>
+                                    <Text style={{ color: theme.iconColor, fontSize: 13 }}>
+                                        {uploadingImage ? "Uploading..." : "Tap to choose photo"}
+                                    </Text>
+                                </View>
+                            )}
+                            {editImageUrl ? (
+                                <Text style={[styles.changePhotoLabel, { color: theme.iconColor }]}>
+                                    {uploadingImage ? "Uploading..." : "Tap to change"}
+                                </Text>
+                            ) : null}
+                        </Pressable>
 
                         <View style={styles.modalButtons}>
                             <Pressable
@@ -564,6 +587,10 @@ const styles = StyleSheet.create({
     textArea: { height: 90, textAlignVertical: "top" },
     modalButtons: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 8 },
     modalBtn: { borderRadius: 10, paddingVertical: 10, paddingHorizontal: 20 },
-    suggestionsBox: { borderWidth: 1, borderRadius: 10, marginTop: -8, overflow: "hidden", maxHeight: 200,},
+    suggestionsBox: { borderWidth: 1, borderRadius: 10, marginTop: -8, overflow: "hidden", maxHeight: 200, },
     suggestionRow: { padding: 12, borderBottomWidth: 1 },
+    imagePickerBtn: { alignItems: "center", marginBottom: 4 },
+    imagePickerPreview: { width: 100, height: 100, borderRadius: 50 },
+    imagePickerPlaceholder: { width: 100, height: 100, borderRadius: 50, borderWidth: 1, borderStyle: "dashed", justifyContent: "center", alignItems: "center" },
+    changePhotoLabel: { fontSize: 12, marginTop: 6 },
 });

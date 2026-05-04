@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "../../constants/Colors";
-// CHANGED: import isManager helper to conditionally show the Your Club tab
 import { isManager, isAdmin } from "../../utils/auth";
 import { useTheme } from "../../context/ThemeContext";
 
