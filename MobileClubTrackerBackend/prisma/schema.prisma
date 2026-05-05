@@ -13,8 +13,13 @@ datasource db {
 model User {
   id        Int      @id @default(autoincrement())
   name      String?
+  // Stored email is always lowercased + trimmed (see auth normalization in server.ts).
   email     String   @unique
+  // bcrypt hash. NEVER store plaintext.
   password  String
+  // Random opaque token issued at /login. Sent by clients as `Authorization: Bearer <token>`.
+  // Null = user is not logged in on any device. Rotated on every login.
+  token     String?  @unique
   imageUrl  String?
   pushToken String?
   createdAt DateTime @default(now())
