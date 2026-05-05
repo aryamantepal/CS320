@@ -7,9 +7,8 @@ import {
     Pressable,
     StyleSheet,
     Dimensions,
-    useColorScheme,
 } from "react-native";
-import { Colors } from "../constants/Colors";
+import { useTheme } from "../context/ThemeContext";
 
 // We divide screen width by 3 columns, subtracting margins to get the tile size.
 // This math ensures the grid always fits perfectly regardless of screen size.
@@ -22,8 +21,7 @@ const CONTAINER_PADDING = 16; // ← must match the padding in explore.jsx
 const TILE_SIZE = (SCREEN_WIDTH - CONTAINER_PADDING * 2 - TILE_MARGIN * (NUM_COLUMNS + 1)) / NUM_COLUMNS;
 
 export default function ClubCard({ club, onPress }) {
-    const colorScheme = useColorScheme();
-    const theme = Colors[colorScheme] ?? Colors.light;
+    const { theme } = useTheme();
 
     return (
         <Pressable

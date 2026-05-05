@@ -4,26 +4,20 @@ import {
     TextInput,
     Pressable,
     StyleSheet,
-    useColorScheme,
-    KeyboardAvoidingView, // ← add this
-    Platform,             // ← add this so we can check iOS vs Android
-    ScrollView,           // ← add this so content can scroll when keyboard is tall
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { loginUser } from "../../utils/auth";
 import { Colors } from "../../constants/Colors";
+import { useTheme } from "../../context/ThemeContext";
 
 import ThemedView from "../../components/ThemedView";
 
-
-const ADMIN_EMAIL = "admin@club.com";
-const ADMIN_PASSWORD = "admin123";
-
 export default function Login() {
     const router = useRouter();
-
-    const colorScheme = useColorScheme();
-    const theme = Colors[colorScheme] ?? Colors.light;
+    const { theme } = useTheme();
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -39,7 +33,7 @@ export default function Login() {
             return;
         }
         try {
-            await loginUser(email, password); // now passes password too
+            await loginUser(email, password);
             router.replace("/(tabs)");
         } catch (err) {
             alert(err.message); // shows "Invalid email or password" from server
@@ -48,29 +42,13 @@ export default function Login() {
 
     return (
         <ThemedView style={styles.container} safe={true}>
-            {/*
-                KeyboardAvoidingView sits inside ThemedView.
-                - behavior="padding" adds bottom padding equal to keyboard height (iOS)
-                - On Android we pass undefined because the OS handles it natively
-                - style={{ flex: 1 }} is important — without it, the view
-                  collapses to zero height and nothing shows up
-            */}
             <KeyboardAvoidingView
                 style={{ flex: 1 }}
                 behavior={Platform.OS === "ios" ? "padding" : undefined}
             >
-                {/*
-                    ScrollView ensures that if the keyboard is very tall
-                    (like on a small phone), the user can still scroll up
-                    to see all the fields. Without this, content could get
-                    permanently hidden behind the keyboard.
-                    
-                    contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
-                    keeps your form centered vertically, just like before.
-                */}
                 <ScrollView
                     contentContainerStyle={styles.container}
-                    keyboardShouldPersistTaps="handled" // tapping outside keyboard dismisses it
+                    keyboardShouldPersistTaps="handled"
                 >
                     <Text style={[styles.title, { color: theme.title }]}>
                         Login
@@ -82,6 +60,7 @@ export default function Login() {
                         value={email}
                         onChangeText={setEmail}
                         autoCapitalize="none"
+                        keyboardType="email-address"
                         style={[styles.input, {
                             borderColor: theme.iconColor,
                             color: theme.text,

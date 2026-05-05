@@ -10,10 +10,9 @@ import {
     ActivityIndicator,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { Colors } from "../constants/Colors";
 import ThemedView from "../components/ThemedView";
 import ThemedCard from "../components/ThemedCard";
-import { API_URL, getUserId } from "../utils/auth";
+import { apiFetch, getFollowedOrgIds, followOrg, unfollowOrg } from "../utils/auth";
 import { addEventToCalendar } from "../utils/calendar";
 import { useTheme } from "../context/ThemeContext";
 
@@ -21,14 +20,17 @@ const SCREEN_WIDTH = Dimensions.get("window").width;
 const BANNER_HEIGHT = 160;
 const AVATAR_SIZE = 90;
 
-// CHANGED: clubProfile is now a pure public viewer — all manager logic moved to yourClub.jsx
+// Public viewer for a club. All manager-only actions live in yourClub.jsx.
 export default function ClubPage() {
     const router = useRouter();
-    const { isDarkMode } = useTheme();
-    const theme = Colors[isDarkMode ? "dark" : "light"] ?? Colors.light;
+    const { theme } = useTheme();
 
-    const { id, name } = useLocalSearchParams();
-    const orgId = parseInt(id);
+    const params = useLocalSearchParams();
+    // Guard against missing/garbage `id` params — without this, fetches go to
+    // /orgs/NaN and the screen sits in an inconsistent state.
+    const orgId = parseInt(String(params.id ?? ""), 10);
+    const orgIdValid = Number.isFinite(orgId);
+    const name = typeof params.name === "string" ? params.name : "";
 
     const [posts, setPosts] = useState([]);
     const [isFollowing, setIsFollowing] = useState(false);
@@ -36,28 +38,26 @@ export default function ClubPage() {
     const [description, setDescription] = useState("");
     const [imageUrl, setImageUrl] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [userId, setUserId] = useState(null);
 
     useEffect(() => {
+        if (!orgIdValid) {
+            setLoading(false);
+            return;
+        }
         const loadData = async () => {
-            const uid = await getUserId();
-            setUserId(uid);
-
             try {
-                const [postsRes, followsRes, orgRes] = await Promise.all([
-                    fetch(`${API_URL}/orgs/${orgId}/posts`),
-                    fetch(`${API_URL}/follows/${uid}`),
-                    fetch(`${API_URL}/orgs/${orgId}`),
+                const [postsRes, followedIds, orgRes] = await Promise.all([
+                    apiFetch(`/orgs/${orgId}/posts`),
+                    getFollowedOrgIds(),
+                    apiFetch(`/orgs/${orgId}`),
                 ]);
                 const postsData = await postsRes.json();
-                const followedOrgIds = await followsRes.json();
                 const orgData = await orgRes.json();
 
                 setPosts(Array.isArray(postsData) ? postsData : []);
-                setIsFollowing(Array.isArray(followedOrgIds) && followedOrgIds.includes(orgId));
+                setIsFollowing(Array.isArray(followedIds) && followedIds.includes(orgId));
                 setFollowerCount(orgData._count?.followers ?? 0);
                 setDescription(orgData.description ?? "");
-                // CHANGED: display club image if the manager has set one
                 setImageUrl(orgData.imageUrl ?? null);
             } catch (err) {
                 console.error("Failed to load club data:", err);
@@ -66,29 +66,36 @@ export default function ClubPage() {
             }
         };
         loadData();
-    }, [orgId]);
+    }, [orgId, orgIdValid]);
 
     const handleFollowToggle = async () => {
+        // Optimistic state, but we revert if the server rejects.
+        const wasFollowing = isFollowing;
+        setIsFollowing(!wasFollowing);
+        setFollowerCount((c) => wasFollowing ? Math.max(0, c - 1) : c + 1);
         try {
-            if (isFollowing) {
-                await fetch(`${API_URL}/follow`, {
-                    method: "DELETE",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ userId, organizationId: orgId }),
-                });
-            } else {
-                await fetch(`${API_URL}/follow`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ userId, organizationId: orgId }),
-                });
-            }
-            setIsFollowing(!isFollowing);
-            setFollowerCount((c) => isFollowing ? c - 1 : c + 1);
+            if (wasFollowing) await unfollowOrg(orgId);
+            else await followOrg(orgId);
         } catch (err) {
             console.error("Follow toggle failed:", err);
+            // Revert
+            setIsFollowing(wasFollowing);
+            setFollowerCount((c) => wasFollowing ? c + 1 : Math.max(0, c - 1));
         }
     };
+
+    if (!orgIdValid) {
+        return (
+            <ThemedView safe={true} style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24 }}>
+                <Text style={{ color: theme.text, fontSize: 16, textAlign: "center" }}>
+                    This club link is invalid.
+                </Text>
+                <Pressable style={{ marginTop: 16 }} onPress={() => router.back()}>
+                    <Text style={{ color: "#007AFF", fontSize: 15, fontWeight: "600" }}>‹ Go back</Text>
+                </Pressable>
+            </ThemedView>
+        );
+    }
 
     if (loading) {
         return (
@@ -105,9 +112,7 @@ export default function ClubPage() {
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
             >
-                {/* ── HEADER: Banner + Avatar ── */}
                 <View style={styles.headerContainer}>
-                    {/* CHANGED: use club imageUrl if available, fallback to default */}
                     <Image
                         source={imageUrl ? { uri: imageUrl } : require("../assets/adaptive-icon.png")}
                         style={styles.banner}
@@ -124,7 +129,6 @@ export default function ClubPage() {
                     </View>
                 </View>
 
-                {/* ── CLUB INFO ── */}
                 <View style={[styles.infoSection, { backgroundColor: theme.uiBackground }]}>
                     <View style={styles.nameRow}>
                         <Text style={[styles.name, { color: theme.text }]}>{name}</Text>
@@ -145,13 +149,11 @@ export default function ClubPage() {
                     <Text style={[styles.meta, { color: theme.iconColor }]}>
                         {followerCount} {followerCount === 1 ? "follower" : "followers"}
                     </Text>
-                    {/* CHANGED: show description if the manager has set one */}
                     {description ? (
                         <Text style={[styles.description, { color: theme.text }]}>{description}</Text>
                     ) : null}
                 </View>
 
-                {/* ── POSTS ── */}
                 <View style={styles.sectionContainer}>
                     <Text style={[styles.sectionTitle, { color: theme.text }]}>Posts</Text>
                     {posts.length === 0 ? (

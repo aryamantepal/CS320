@@ -5,17 +5,15 @@ import {
     ScrollView,
     Pressable,
     StyleSheet,
-    useColorScheme,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { Colors } from "../constants/Colors";
 import ThemedView from "../components/ThemedView";
 import { addEventToCalendar } from "../utils/calendar";
+import { useTheme } from "../context/ThemeContext";
 
 export default function PostDetail() {
     const router = useRouter();
-    const colorScheme = useColorScheme();
-    const theme = Colors[colorScheme] ?? Colors.light;
+    const { theme } = useTheme();
 
     const { type, title, body, location, startDateTime, clubName } =
         useLocalSearchParams();

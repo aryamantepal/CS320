@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
     View,
     Text,
@@ -6,7 +6,6 @@ import {
     Image,
     Pressable,
     StyleSheet,
-    useColorScheme,
     Dimensions,
     ActivityIndicator,
     Modal,
@@ -15,9 +14,19 @@ import {
     Platform,
     Alert,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter, useFocusEffect } from "expo-router";
-import { Colors } from "../../constants/Colors";
-import { logoutUser, getUser, getManagedOrgs, API_URL, updateUser } from "../../utils/auth";
+import {
+    logoutUser,
+    getUser,
+    getManagedOrgs,
+    apiFetch,
+    updateUser,
+    refreshUser,
+    submitClubRequest,
+    changePassword,
+    clearPushToken,
+} from "../../utils/auth";
 import ThemedView from "../../components/ThemedView.jsx";
 import { useTheme } from "../../context/ThemeContext";
 import { registerForPushNotifications } from "../../utils/notifications";
@@ -27,51 +36,65 @@ const SCREEN_WIDTH = Dimensions.get("window").width;
 const BANNER_HEIGHT = 140;
 const AVATAR_SIZE = 90;
 
+const NOTIFICATIONS_KEY = "notificationsEnabled";
+const PRIVATE_PROFILE_KEY = "privateProfile";
+
 export default function Profile() {
     const router = useRouter();
-    const systemScheme = useColorScheme();
-
     const { theme, isDarkMode, setIsDarkMode } = useTheme();
+
     const [user, setUser] = useState(null);
     const [followedOrgs, setFollowedOrgs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [managedOrgs, setManagedOrgs] = useState([]);
 
-    // CHANGED: Edit Profile modal state
     const [showEditModal, setShowEditModal] = useState(false);
     const [editName, setEditName] = useState("");
     const [editImageUrl, setEditImageUrl] = useState("");
     const [uploadingImage, setUploadingImage] = useState(false);
     const [savingProfile, setSavingProfile] = useState(false);
 
-    // Club manager request state
     const [showRequestModal, setShowRequestModal] = useState(false);
     const [clubName, setClubName] = useState("");
     const [clubDescription, setClubDescription] = useState("");
     const [clubLocation, setClubLocation] = useState("");
     const [submitting, setSubmitting] = useState(false);
 
-    // ── Add to state declarations at the top of Profile() ──
     const [showPasswordModal, setShowPasswordModal] = useState(false);
     const [currentPassword, setCurrentPassword] = useState("");
     const [newPassword, setNewPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [changingPassword, setChangingPassword] = useState(false);
 
+    // Persisted across app restarts via AsyncStorage. We rehydrate on mount.
     const [notificationsEnabled, setNotificationsEnabled] = useState(false);
     const [privateProfile, setPrivateProfile] = useState(false);
+
+    useEffect(() => {
+        (async () => {
+            const [n, p] = await Promise.all([
+                AsyncStorage.getItem(NOTIFICATIONS_KEY),
+                AsyncStorage.getItem(PRIVATE_PROFILE_KEY),
+            ]);
+            if (n === "true") setNotificationsEnabled(true);
+            if (p === "true") setPrivateProfile(true);
+        })();
+    }, []);
 
     useFocusEffect(
         useCallback(() => {
             const loadProfile = async () => {
                 setLoading(true);
+                // Refresh /me first so the user we render reflects role/org
+                // changes that may have happened on another device.
+                await refreshUser();
                 const currentUser = await getUser();
                 setUser(currentUser);
 
                 if (currentUser) {
                     try {
                         const [followsRes, managed] = await Promise.all([
-                            fetch(`${API_URL}/follows/${currentUser.id}/orgs`),
+                            apiFetch(`/follows/orgs`),
                             getManagedOrgs(),
                         ]);
                         const followsData = await followsRes.json();
@@ -81,7 +104,7 @@ export default function Profile() {
                         const hydrated = await Promise.all(
                             (managed ?? []).map(async (m) => {
                                 try {
-                                    const r = await fetch(`${API_URL}/orgs/${m.id}`);
+                                    const r = await apiFetch(`/orgs/${m.id}`);
                                     return r.ok ? await r.json() : m;
                                 } catch {
                                     return m;
@@ -107,6 +130,7 @@ export default function Profile() {
     );
 
     const handlePickProfileImage = async () => {
+        if (!user) return;
         setUploadingImage(true);
         try {
             const url = await pickAndUploadImage("club-images", `users/${user.id}.jpg`);
@@ -118,14 +142,12 @@ export default function Profile() {
         }
     };
 
-    // CHANGED: open edit modal pre-filled with current values
     const handleOpenEditModal = () => {
         setEditName(user?.name ?? "");
         setEditImageUrl(user?.imageUrl ?? "");
         setShowEditModal(true);
     };
 
-    // CHANGED: save name and image URL, update local state immediately
     const handleSaveProfile = async () => {
         setSavingProfile(true);
         try {
@@ -155,19 +177,7 @@ export default function Profile() {
 
         setSubmitting(true);
         try {
-            const res = await fetch(`${API_URL}/club-requests`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    userId: user.id,
-                    clubName: clubName.trim(),
-                    description: clubDescription.trim(),
-                    location: clubLocation.trim(),
-                }),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error);
-
+            await submitClubRequest(clubName.trim(), clubDescription.trim(), clubLocation.trim());
             setClubName("");
             setClubDescription("");
             setClubLocation("");
@@ -177,6 +187,56 @@ export default function Profile() {
             Alert.alert("Error", err.message ?? "Something went wrong. Try again.");
         } finally {
             setSubmitting(false);
+        }
+    };
+
+    // Toggle push notifications. "On" registers a device token with the
+    // server; "Off" calls DELETE /users/:id/push-token so the server
+    // actually stops sending pushes (the previous version only flipped a
+    // local boolean).
+    const handleToggleNotifications = async () => {
+        try {
+            if (!notificationsEnabled) {
+                const token = await registerForPushNotifications(user.id);
+                if (token) {
+                    setNotificationsEnabled(true);
+                    await AsyncStorage.setItem(NOTIFICATIONS_KEY, "true");
+                }
+            } else {
+                await clearPushToken(user.id);
+                setNotificationsEnabled(false);
+                await AsyncStorage.setItem(NOTIFICATIONS_KEY, "false");
+            }
+        } catch (err) {
+            Alert.alert("Error", err.message ?? "Could not update notification settings.");
+        }
+    };
+
+    const handleTogglePrivacy = async () => {
+        const next = !privateProfile;
+        setPrivateProfile(next);
+        await AsyncStorage.setItem(PRIVATE_PROFILE_KEY, String(next));
+    };
+
+    const handleChangePassword = async () => {
+        if (newPassword !== confirmPassword) {
+            return Alert.alert("Error", "New passwords don't match");
+        }
+        if (newPassword.length < 6) {
+            return Alert.alert("Error", "New password must be at least 6 characters");
+        }
+        setChangingPassword(true);
+        try {
+            await changePassword(user.id, currentPassword, newPassword);
+            setShowPasswordModal(false);
+            setCurrentPassword("");
+            setNewPassword("");
+            setConfirmPassword("");
+            Alert.alert("Success", "Password updated successfully.");
+        } catch (err) {
+            Alert.alert("Error", err.message ?? "Could not update password.");
+        } finally {
+            setChangingPassword(false);
         }
     };
 
@@ -194,7 +254,7 @@ export default function Profile() {
                 style={{ backgroundColor: theme.background }}
                 contentContainerStyle={styles.scrollContent}
             >
-                {/* ── HEADER: Banner + Avatar ── */}
+                {/* ── HEADER ── */}
                 <View style={styles.headerContainer}>
                     <Image
                         source={require("../../assets/splash-icon.png")}
@@ -202,7 +262,6 @@ export default function Profile() {
                         resizeMode="cover"
                     />
                     <View style={styles.avatarWrapper}>
-                        {/* CHANGED: show custom profile picture if set */}
                         <Image
                             source={
                                 user?.imageUrl
@@ -225,7 +284,6 @@ export default function Profile() {
                     {user?.role === "admin" && (
                         <Text style={styles.adminBadge}>🛡️ Admin</Text>
                     )}
-                    {/* CHANGED: Edit Profile now opens the modal */}
                     <Pressable
                         style={[styles.editButton, { borderColor: theme.iconColor, backgroundColor: theme.uiBackground }]}
                         onPress={handleOpenEditModal}
@@ -244,7 +302,12 @@ export default function Profile() {
                             <Pressable
                                 key={org.id}
                                 style={[styles.clubRow, { backgroundColor: theme.uiBackground }]}
-                                onPress={() => router.push("/(tabs)/yourClub")}
+                                onPress={() =>
+                                    router.push({
+                                        pathname: "/(tabs)/yourClub",
+                                        params: { orgId: String(org.id) },
+                                    })
+                                }
                             >
                                 <Image
                                     source={
@@ -306,45 +369,27 @@ export default function Profile() {
                 </View>
 
                 {/* ── ACCOUNT SETTINGS ── */}
+                {/* The previous version had two separate "Dark Mode" / "Theme" rows
+                    that both toggled the same state. Now consolidated into one row
+                    that shows the current value. */}
                 <View style={styles.sectionContainer}>
                     <Text style={[styles.sectionTitle, { color: theme.text }]}>Account Settings</Text>
                     {[
                         {
-                            label: "Dark Mode",
+                            label: `Theme   ${isDarkMode ? "🌙 Dark" : "☀️ Light"}`,
                             onPress: () => setIsDarkMode((v) => !v),
                         },
                         {
                             label: "Change Password",
                             onPress: () => setShowPasswordModal(true),
                         },
-
                         {
                             label: `Notifications   ${notificationsEnabled ? "🔔 On" : "🔕 Off"}`,
-                            onPress: async () => {
-                                if (!notificationsEnabled) {
-                                    const token = await registerForPushNotifications(user.id);
-                                    if (token) setNotificationsEnabled(true);
-                                    // if they denied permission, token is null and toggle stays off
-                                } else {
-                                    // Optionally: tell server to delete the token
-                                    setNotificationsEnabled(false);
-                                }
-                            },
+                            onPress: handleToggleNotifications,
                         },
                         {
-                            label: `Theme   ${isDarkMode ? "🌙 Dark" : "☀️ Light"}`,
-                            onPress: () => {
-                                setIsDarkMode((v) => {
-                                    const newValue = !v;
-                                    //console.log("Dark mode:", newValue);
-                                    return newValue;
-                                });
-                            },
-
-                        },               
-                        {
                             label: `Privacy   ${privateProfile ? "🔒 Private" : "🌐 Public"}`,
-                            onPress: () => setPrivateProfile((v) => !v),
+                            onPress: handleTogglePrivacy,
                         },
                     ].map((item, index) => (
                         <Pressable
@@ -378,7 +423,7 @@ export default function Profile() {
                 </View>
             </ScrollView>
 
-            {/* CHANGED: Edit Profile Modal with name + image URL + live preview */}
+            {/* ── EDIT PROFILE MODAL ── */}
             <Modal
                 visible={showEditModal}
                 animationType="slide"
@@ -435,8 +480,6 @@ export default function Profile() {
                     </View>
                 </KeyboardAvoidingView>
             </Modal>
-
-            
 
             {/* ── CLUB MANAGER REQUEST MODAL ── */}
             <Modal
@@ -567,33 +610,7 @@ export default function Profile() {
                             <Pressable
                                 style={[styles.modalBtn, { backgroundColor: "#007AFF" }]}
                                 disabled={changingPassword}
-                                onPress={async () => {
-                                    if (newPassword !== confirmPassword) {
-                                        return Alert.alert("Error", "New passwords don't match");
-                                    }
-                                    if (newPassword.length < 6) {
-                                        return Alert.alert("Error", "New password must be at least 6 characters");
-                                    }
-                                    setChangingPassword(true);
-                                    try {
-                                        const res = await fetch(`${API_URL}/users/${user.id}/password`, {
-                                            method: "PATCH",
-                                            headers: { "Content-Type": "application/json" },
-                                            body: JSON.stringify({ currentPassword, newPassword }),
-                                        });
-                                        const data = await res.json();
-                                        if (!res.ok) throw new Error(data.error);
-                                        setShowPasswordModal(false);
-                                        setCurrentPassword("");
-                                        setNewPassword("");
-                                        setConfirmPassword("");
-                                        Alert.alert("Success", "Password updated successfully.");
-                                    } catch (err) {
-                                        Alert.alert("Error", err.message ?? "Could not update password.");
-                                    } finally {
-                                        setChangingPassword(false);
-                                    }
-                                }}
+                                onPress={handleChangePassword}
                             >
                                 <Text style={{ color: "#fff", fontWeight: "600" }}>
                                     {changingPassword ? "Saving..." : "Save"}
@@ -634,7 +651,6 @@ const styles = StyleSheet.create({
     modalTitle: { fontSize: 20, fontWeight: "700" },
     modalSubtitle: { fontSize: 13, marginBottom: 4 },
     fieldLabel: { fontSize: 12, fontWeight: "600", marginBottom: -4 },
-    // CHANGED: avatar preview in edit modal
     avatarPreviewContainer: { alignItems: "center", marginBottom: 4 },
     avatarPreview: { width: 80, height: 80, borderRadius: 40, backgroundColor: "#ccc", marginBottom: 6 },
     previewLabel: { fontSize: 12 },

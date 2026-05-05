@@ -3,12 +3,10 @@ import { ScrollView, ActivityIndicator, Text } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import ThemedCard from "../../components/ThemedCard";
 import ThemedView from "../../components/ThemedView.jsx";
-import { getUserId, API_URL } from "../../utils/auth";
+import { getFeed } from "../../utils/auth";
 import { addEventToCalendar } from "../../utils/calendar";
-import { useTheme } from "../../context/ThemeContext";
 
 export default function Home() {
-    const { isDarkMode } = useTheme();
     const router = useRouter();
 
     const [feed, setFeed] = useState([]);
@@ -18,13 +16,9 @@ export default function Home() {
         useCallback(() => {
             const loadFeed = async () => {
                 setLoading(true);
-                const userId = await getUserId();
-                if (!userId) { setLoading(false); return; }
-
                 try {
-                    const res = await fetch(`${API_URL}/feed/${userId}`);
-                    const data = await res.json();
-                    setFeed(Array.isArray(data) ? data : []);
+                    const data = await getFeed();
+                    setFeed(data);
                 } catch (err) {
                     console.error("Failed to load feed:", err);
                 } finally {

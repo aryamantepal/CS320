@@ -6,7 +6,6 @@ import {
     Image,
     Text,
 } from "react-native";
-import { Colors } from "../constants/Colors";
 import { useTheme } from "../context/ThemeContext";
 
 function getTextColorForBackground(bgColor) {
@@ -33,8 +32,7 @@ export default function ThemedCard({
     clubName,
     bannerColor,
 }) {
-    const { isDarkMode } = useTheme();
-    const theme = Colors[isDarkMode ? "dark" : "light"] ?? Colors.light;
+    const { theme, isDarkMode } = useTheme();
     const dividerColor = isDarkMode ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.09)";
 
     const cardTextColor = bannerColor ? getTextColorForBackground(bannerColor) : null;

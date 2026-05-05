@@ -8,17 +8,15 @@ import {
     ActivityIndicator,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
-import { Colors } from "../../constants/Colors";
 import ThemedView from "../../components/ThemedView";
 import SearchBar from "../../components/SearchBar";
 import ClubCard, { NUM_COLUMNS, TILE_MARGIN, CONTAINER_PADDING } from "../../components/ClubCard";
-import { API_URL, getManagedOrgs } from "../../utils/auth";
+import { apiFetch, getManagedOrgs } from "../../utils/auth";
 import { useTheme } from "../../context/ThemeContext";
 
 export default function Explore() {
     const router = useRouter();
-    const { isDarkMode } = useTheme();
-    const theme = Colors[isDarkMode ? "dark" : "light"] ?? Colors.light;
+    const { theme } = useTheme();
 
     const [query, setQuery] = useState("");
     const [orgs, setOrgs] = useState([]);
@@ -31,7 +29,7 @@ export default function Explore() {
                 setLoading(true);
                 try {
                     const [res, managedOrgsList] = await Promise.all([
-                        fetch(`${API_URL}/orgs`),
+                        apiFetch(`/orgs`),
                         getManagedOrgs(),
                     ]);
                     const data = await res.json();

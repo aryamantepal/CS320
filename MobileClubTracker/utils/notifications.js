@@ -2,8 +2,7 @@ import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import { Platform } from "react-native";
 import Constants from "expo-constants";
-
-const API_URL = Constants.expoConfig.extra.apiUrl;
+import { setPushToken } from "./auth";
 
 export async function registerForPushNotifications(userId) {
     // Push notifications don't work on emulators/simulators
@@ -24,7 +23,6 @@ export async function registerForPushNotifications(userId) {
         return null;
     }
 
-    // Android needs a notification channel
     if (Platform.OS === "android") {
         await Notifications.setNotificationChannelAsync("default", {
             name: "default",
@@ -32,17 +30,14 @@ export async function registerForPushNotifications(userId) {
         });
     }
 
-    // This is the device's unique push token
-    const token = (await Notifications.getExpoPushTokenAsync({
-        projectId: Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId,
-    })).data;
+    const projectId =
+        Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+    const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
 
-    // Save it to your backend so server can push to this user
-    await fetch(`${API_URL}/users/${userId}/push-token`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pushToken: token }),
-    });
+    // Persist on the server. Goes through apiFetch so the bearer token is
+    // attached automatically — the previous version called fetch directly
+    // and would have failed once the backend started requiring auth.
+    await setPushToken(userId, token);
 
     return token;
 }

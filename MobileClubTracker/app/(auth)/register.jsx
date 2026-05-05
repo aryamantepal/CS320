@@ -4,23 +4,23 @@ import {
     TextInput,
     Pressable,
     StyleSheet,
-    useColorScheme,
     KeyboardAvoidingView,
     Platform,
     ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Colors } from "../../constants/Colors";
+import { useTheme } from "../../context/ThemeContext";
 
 import { registerUser, loginUser } from "../../utils/auth";
 
 import ThemedView from "../../components/ThemedView";
 
+const MIN_PASSWORD_LENGTH = 6;
+
 export default function Register() {
     const router = useRouter();
-
-    const colorScheme = useColorScheme();
-    const theme = Colors[colorScheme] ?? Colors.light;
+    const { theme } = useTheme();
 
     const [email, setEmail] = useState("");
     const [name, setName] = useState("");
@@ -36,12 +36,12 @@ export default function Register() {
             alert("Please enter a valid email address");
             return;
         }
-        if (!password) {
-            alert("Password cannot be empty");
+        if (password.length < MIN_PASSWORD_LENGTH) {
+            alert(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
             return;
         }
         try {
-            await registerUser(email, password, name.trim() || null); // name is optional
+            await registerUser(email, password, name.trim() || null);
             await loginUser(email, password);
             router.replace("/(tabs)");
         } catch (err) {
@@ -65,7 +65,6 @@ export default function Register() {
                         Create Account
                     </Text>
 
-                    {/* Name Input (optional) */}
                     <TextInput
                         placeholder="Name (optional)"
                         placeholderTextColor={theme.iconColor}
@@ -79,13 +78,13 @@ export default function Register() {
                         }]}
                     />
 
-                    {/* Email Input */}
                     <TextInput
                         placeholder="Email"
                         placeholderTextColor={theme.iconColor}
                         value={email}
                         onChangeText={setEmail}
                         autoCapitalize="none"
+                        keyboardType="email-address"
                         style={[
                             styles.input,
                             {
@@ -96,9 +95,8 @@ export default function Register() {
                         ]}
                     />
 
-                    {/* Password Input */}
                     <TextInput
-                        placeholder="Password"
+                        placeholder={`Password (min ${MIN_PASSWORD_LENGTH} chars)`}
                         placeholderTextColor={theme.iconColor}
                         value={password}
                         onChangeText={setPassword}
@@ -113,7 +111,6 @@ export default function Register() {
                         ]}
                     />
 
-                    {/* Sign Up Button */}
                     <Pressable
                         style={[
                             styles.button,
@@ -126,7 +123,6 @@ export default function Register() {
                         </Text>
                     </Pressable>
 
-                    {/* Back to Login */}
                     <Pressable onPress={() => router.push("/login")}>
                         <Text
                             style={[

@@ -1,27 +1,43 @@
 import React, { useEffect, useState } from "react";
-import { Tabs } from "expo-router";
+import { Tabs, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { Colors } from "../../constants/Colors";
-import { isManager, isAdmin } from "../../utils/auth";
+import { useCallback } from "react";
+import { isManager, isAdmin, refreshUser } from "../../utils/auth";
 import { useTheme } from "../../context/ThemeContext";
 
 export default function TabLayout() {
-    const themeContext = useTheme();
-    const theme = themeContext?.theme;
-    if (!theme) return null;
-    
-    // CHANGED: track whether the logged-in user is a manager
+    // IMPORTANT: all hooks must run in the same order on every render.
+    // The previous version did `if (!theme) return null;` *before* the
+    // useState/useEffect hooks below, which violates the Rules of Hooks
+    // and can crash the tab bar with "Rendered more hooks than during
+    // the previous render". `useTheme()` already throws if there's no
+    // provider, so the early return is unnecessary.
+    const { theme } = useTheme();
+
     const [managerMode, setManagerMode] = useState(false);
     const [adminMode, setAdminMode] = useState(false);
 
-    useEffect(() => {
-        const checkRole = async () => {
-            const [manager, admin] = await Promise.all([isManager(), isAdmin()]);
-            setManagerMode(manager);
-            setAdminMode(admin);
-        };
-        checkRole();
+    const recomputeRoles = useCallback(async () => {
+        const [manager, admin] = await Promise.all([isManager(), isAdmin()]);
+        setManagerMode(manager);
+        setAdminMode(admin);
     }, []);
+
+    useEffect(() => {
+        recomputeRoles();
+    }, [recomputeRoles]);
+
+    // Re-pull roles whenever a tab regains focus, so the "Your Club" / "Admin"
+    // tabs appear immediately after a refreshUser() call updates the cache
+    // (e.g. an admin just promoted us to manager).
+    useFocusEffect(
+        useCallback(() => {
+            (async () => {
+                await refreshUser();
+                await recomputeRoles();
+            })();
+        }, [recomputeRoles])
+    );
 
     return (
         <Tabs

@@ -5,7 +5,6 @@ import {
     ScrollView,
     Pressable,
     StyleSheet,
-    useColorScheme,
     ActivityIndicator,
     TextInput,
     Modal,
@@ -17,8 +16,8 @@ import {
 import { useFocusEffect } from "expo-router";
 import { Colors } from "../../constants/Colors";
 import ThemedView from "../../components/ThemedView";
+import { useTheme } from "../../context/ThemeContext";
 import {
-    getUser,
     listClubRequests,
     approveClubRequest,
     rejectClubRequest,
@@ -32,26 +31,24 @@ const STATUS_FILTERS = [
 ];
 
 export default function Admin() {
-    const colorScheme = useColorScheme();
-    const theme = Colors[colorScheme] ?? Colors.light;
+    const { theme } = useTheme();
 
-    const [adminUserId, setAdminUserId] = useState(null);
     const [statusFilter, setStatusFilter] = useState("pending");
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [busyId, setBusyId] = useState(null);
 
-    // Reject modal state
-    const [rejectTarget, setRejectTarget] = useState(null); // request object or null
+    const [rejectTarget, setRejectTarget] = useState(null);
     const [rejectReason, setRejectReason] = useState("");
     const [rejectSubmitting, setRejectSubmitting] = useState(false);
 
     const loadRequests = useCallback(
-        async (uid, status) => {
-            if (!uid) return;
+        async (status) => {
             try {
-                const data = await listClubRequests(uid, status);
+                // adminUserId is no longer plumbed through the body/query —
+                // the server resolves the caller from the bearer token.
+                const data = await listClubRequests(null, status);
                 setRequests(Array.isArray(data) ? data : []);
             } catch (err) {
                 console.error("Failed to load club requests:", err);
@@ -66,11 +63,7 @@ export default function Admin() {
             let cancelled = false;
             (async () => {
                 setLoading(true);
-                const user = await getUser();
-                if (cancelled) return;
-                const uid = user?.id ?? null;
-                setAdminUserId(uid);
-                await loadRequests(uid, statusFilter);
+                await loadRequests(statusFilter);
                 if (!cancelled) setLoading(false);
             })();
             return () => {
@@ -81,9 +74,9 @@ export default function Admin() {
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
-        await loadRequests(adminUserId, statusFilter);
+        await loadRequests(statusFilter);
         setRefreshing(false);
-    }, [adminUserId, statusFilter, loadRequests]);
+    }, [statusFilter, loadRequests]);
 
     const handleApprove = (request) => {
         Alert.alert(
@@ -96,8 +89,8 @@ export default function Admin() {
                     onPress: async () => {
                         setBusyId(request.id);
                         try {
-                            await approveClubRequest(adminUserId, request.id);
-                            await loadRequests(adminUserId, statusFilter);
+                            await approveClubRequest(null, request.id);
+                            await loadRequests(statusFilter);
                         } catch (err) {
                             Alert.alert("Error", err.message || "Approval failed.");
                         } finally {
@@ -118,10 +111,10 @@ export default function Admin() {
         if (!rejectTarget) return;
         setRejectSubmitting(true);
         try {
-            await rejectClubRequest(adminUserId, rejectTarget.id, rejectReason.trim() || null);
+            await rejectClubRequest(null, rejectTarget.id, rejectReason.trim() || null);
             setRejectTarget(null);
             setRejectReason("");
-            await loadRequests(adminUserId, statusFilter);
+            await loadRequests(statusFilter);
         } catch (err) {
             Alert.alert("Error", err.message || "Rejection failed.");
         } finally {
@@ -198,7 +191,6 @@ export default function Admin() {
                 )}
             </ScrollView>
 
-            {/* ── REJECT MODAL ── */}
             <Modal
                 visible={rejectTarget !== null}
                 animationType="slide"

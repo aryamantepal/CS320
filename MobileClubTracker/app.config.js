@@ -6,7 +6,10 @@ export default {
     version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/icon.png",
-    userInterfaceStyle: "light",
+    // "automatic" so the system honors the in-app dark mode toggle.
+    // The previous "light" value forced iOS into light appearance and
+    // collided with our useTheme() palette.
+    userInterfaceStyle: "automatic",
     newArchEnabled: true,
     splash: {
       image: "./assets/splash-icon.png",
@@ -35,11 +38,13 @@ export default {
         "@react-native-community/datetimepicker"
     ],
     extra: {
-      apiUrl: process.env.API_URL,  // ← no quotes, reads from .env
+      // Reads from the API_URL environment variable (set in `.env` or your
+      // shell). Falls back to undefined — see auth.js for the runtime guard.
+      apiUrl: process.env.API_URL,
       eas: {
-        projectId:  "40c1c2fe-51da-499c-a2d0-452f67e2b216" // ← no quotes, reads from .env
-      }
+        projectId: "40c1c2fe-51da-499c-a2d0-452f67e2b216",
+      },
     },
-    owner: "mirziya" // ← no quotes, reads from .env
+    owner: "mirziya",
   },
 };

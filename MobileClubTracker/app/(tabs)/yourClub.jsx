@@ -1,5 +1,9 @@
-// CHANGED: yourClub.jsx is now the full manager dashboard —
-// edit club name, description, image URL, and create events/announcements
+// Manager dashboard. Edit club info, create events/announcements, manage co-managers.
+//
+// Now supports MULTIPLE managed orgs:
+//   • Reads `?orgId=<id>` from the route. If absent, falls back to the first
+//     org in the user's managedOrgs list (back-compat with old deeplinks).
+//   • Renders an org switcher when the user manages 2+ clubs.
 import React, { useState, useCallback, useRef } from "react";
 import {
     View,
@@ -16,36 +20,40 @@ import {
     Platform,
     Alert,
 } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { Colors } from "../../constants/Colors";
 import {
-    getManagedOrg,
-    API_URL,
+    apiFetch,
+    getManagedOrgs,
     getOrgManagers,
     addManagerByEmail,
-    getUserId,
 } from "../../utils/auth";
 import ThemedView from "../../components/ThemedView";
 import ThemedCard from "../../components/ThemedCard";
-import { useTheme } from '../../context/ThemeContext';
+import { useTheme } from "../../context/ThemeContext";
 import { pickAndUploadImage } from "../../utils/uploadImage";
+
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const BANNER_HEIGHT = 160;
 const AVATAR_SIZE = 90;
 
 export default function YourClub() {
-    const { isDarkMode } = useTheme();
-    const theme = Colors[isDarkMode ? "dark" : "light"] ?? Colors.light;
+    const router = useRouter();
+    const { theme } = useTheme();
 
-    //Check location when user stops typing
+    const params = useLocalSearchParams();
+    const requestedOrgId = parseInt(String(params.orgId ?? ""), 10);
+
+    // Photon API debounce timer for the location autocomplete.
     const searchTimeout = useRef(null);
 
+    const [managedList, setManagedList] = useState([]); // [{ id, name, ... }]
+    const [activeOrgId, setActiveOrgId] = useState(null);
     const [org, setOrg] = useState(null);
     const [posts, setPosts] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    // ── Edit club info state ──
+    // ── Edit club info ──
     const [editName, setEditName] = useState("");
     const [editDescription, setEditDescription] = useState("");
     const [editImageUrl, setEditImageUrl] = useState("");
@@ -53,7 +61,7 @@ export default function YourClub() {
     const [showEditModal, setShowEditModal] = useState(false);
     const [savingInfo, setSavingInfo] = useState(false);
 
-    // ── Create post state ──
+    // ── Create post ──
     const [modalType, setModalType] = useState(null); // null | "event" | "announcement"
     const [postTitle, setPostTitle] = useState("");
     const [postBody, setPostBody] = useState("");
@@ -64,24 +72,40 @@ export default function YourClub() {
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [submitting, setSubmitting] = useState(false);
 
-    // ── Managers state ──
+    // ── Managers ──
     const [managers, setManagers] = useState([]);
     const [showManagersModal, setShowManagersModal] = useState(false);
     const [newManagerEmail, setNewManagerEmail] = useState("");
     const [addingManager, setAddingManager] = useState(false);
+
+    // Org switcher modal — only relevant when the user manages 2+ orgs.
+    const [showOrgPicker, setShowOrgPicker] = useState(false);
 
     useFocusEffect(
         useCallback(() => {
             const loadClub = async () => {
                 setLoading(true);
                 try {
-                    const managedOrg = await getManagedOrg();
-                    if (!managedOrg) { setLoading(false); return; }
+                    const managed = await getManagedOrgs();
+                    setManagedList(managed);
+                    if (managed.length === 0) {
+                        setOrg(null);
+                        setActiveOrgId(null);
+                        setLoading(false);
+                        return;
+                    }
+
+                    // Prefer the orgId from the route param if it's actually
+                    // one of the user's managed orgs. Otherwise fall back to
+                    // the first one (back-compat with the single-org UI).
+                    const valid = Number.isFinite(requestedOrgId) && managed.some((m) => m.id === requestedOrgId);
+                    const targetId = valid ? requestedOrgId : managed[0].id;
+                    setActiveOrgId(targetId);
 
                     const [orgRes, postsRes, managersList] = await Promise.all([
-                        fetch(`${API_URL}/orgs/${managedOrg.id}`),
-                        fetch(`${API_URL}/orgs/${managedOrg.id}/posts`),
-                        getOrgManagers(managedOrg.id).catch(() => []),
+                        apiFetch(`/orgs/${targetId}`),
+                        apiFetch(`/orgs/${targetId}/posts`),
+                        getOrgManagers(targetId).catch(() => []),
                     ]);
                     const orgData = await orgRes.json();
                     const postsData = await postsRes.json();
@@ -99,10 +123,18 @@ export default function YourClub() {
                 }
             };
             loadClub();
-        }, [])
+        }, [requestedOrgId])
     );
 
+    const switchOrg = (newOrgId) => {
+        setShowOrgPicker(false);
+        if (newOrgId === activeOrgId) return;
+        // Use router.setParams so the focus effect re-runs with the new orgId.
+        router.setParams({ orgId: String(newOrgId) });
+    };
+
     const handlePickClubImage = async () => {
+        if (!org) return;
         setUploadingImage(true);
         try {
             const url = await pickAndUploadImage("club-images", `orgs/${org.id}.jpg`);
@@ -114,22 +146,19 @@ export default function YourClub() {
         }
     };
 
-    // Save club name, description, and image URL
     const handleSaveClubInfo = async () => {
         if (!editName.trim()) return Alert.alert("Error", "Club name cannot be empty");
         setSavingInfo(true);
         try {
-            await fetch(`${API_URL}/orgs/${org.id}`, {
+            await apiFetch(`/orgs/${org.id}`, {
                 method: "PATCH",
-                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     name: editName.trim(),
                     description: editDescription.trim(),
                     imageUrl: editImageUrl.trim() || null,
                 }),
             });
-            // Refresh org data
-            const res = await fetch(`${API_URL}/orgs/${org.id}`);
+            const res = await apiFetch(`/orgs/${org.id}`);
             const updated = await res.json();
             setOrg(updated);
             setShowEditModal(false);
@@ -142,14 +171,12 @@ export default function YourClub() {
         }
     };
 
-    // Add another user as manager of this org by their email.
     const handleAddManager = async () => {
         const email = newManagerEmail.trim().toLowerCase();
         if (!email) return Alert.alert("Error", "Email is required");
         setAddingManager(true);
         try {
-            const callerId = await getUserId();
-            const result = await addManagerByEmail(org.id, callerId, email);
+            const result = await addManagerByEmail(org.id, null, email);
             const fresh = await getOrgManagers(org.id);
             setManagers(fresh);
             setNewManagerEmail("");
@@ -161,17 +188,14 @@ export default function YourClub() {
         }
     };
 
-    // Search for location suggestions using Photon API as user types in event location field
+    // Photon location autocomplete. Debounced 500ms.
     const searchLocation = (text) => {
         setPostLocation(text);
         setLocationSuggestions([]);
 
         if (text.length < 3) return;
-
-        // Cancel previous pending search
         if (searchTimeout.current) clearTimeout(searchTimeout.current);
 
-        // Wait 500ms after user stops typing before searching
         searchTimeout.current = setTimeout(async () => {
             setLocationSearching(true);
             try {
@@ -179,7 +203,6 @@ export default function YourClub() {
                     `https://photon.komoot.io/api/?q=${encodeURIComponent(text)}&limit=5`
                 );
                 const data = await res.json();
-                // Photon returns { features: [...] } instead of an array
                 const suggestions = (data.features ?? []).map((f) => ({
                     display_name: [
                         f.properties.name,
@@ -197,40 +220,51 @@ export default function YourClub() {
         }, 500);
     };
 
-    // Submit a new event or announcement
     const handleSubmitPost = async () => {
+        // Validate BEFORE flipping the submitting flag, so a validation
+        // failure can't leave the button stuck in "Posting..." state.
         if (!postTitle.trim()) return Alert.alert("Error", "Title is required");
+        if (modalType === "event") {
+            if (!postLocation.trim()) return Alert.alert("Error", "Location is required");
+            // postDate is a Date object — never call .trim() on it. We assert
+            // it's a valid Date instead. (The previous code crashed here.)
+            if (!(postDate instanceof Date) || isNaN(postDate.getTime())) {
+                return Alert.alert("Error", "Date is required");
+            }
+        } else {
+            if (!postBody.trim()) return Alert.alert("Error", "Body is required");
+        }
+
         setSubmitting(true);
         try {
             if (modalType === "event") {
-                if (!postLocation.trim()) return Alert.alert("Error", "Location is required");
-                if (!postDate.trim()) return Alert.alert("Error", "Date is required");
-
-                await fetch(`${API_URL}/orgs/${org.id}/events`, {
+                const res = await apiFetch(`/orgs/${org.id}/events`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         title: postTitle,
                         location: postLocation,
                         startDateTime: postDate.toISOString(),
                     }),
                 });
-
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.error ?? "Could not create event");
+                }
             } else {
-                if (!postBody.trim()) return Alert.alert("Error", "Body is required");
-                await fetch(`${API_URL}/orgs/${org.id}/announcements`, {
+                const res = await apiFetch(`/orgs/${org.id}/announcements`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ title: postTitle, body: postBody }),
                 });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.error ?? "Could not create announcement");
+                }
             }
 
-            // Refresh posts
-            const res = await fetch(`${API_URL}/orgs/${org.id}/posts`);
+            const res = await apiFetch(`/orgs/${org.id}/posts`);
             const data = await res.json();
             setPosts(Array.isArray(data) ? data : []);
 
-            // Reset form and close modal
             setPostTitle("");
             setPostBody("");
             setPostLocation("");
@@ -238,7 +272,7 @@ export default function YourClub() {
             setModalType(null);
         } catch (err) {
             console.error("Failed to create post:", err);
-            Alert.alert("Error", "Something went wrong. Try again.");
+            Alert.alert("Error", err.message ?? "Something went wrong. Try again.");
         } finally {
             setSubmitting(false);
         }
@@ -257,11 +291,10 @@ export default function YourClub() {
                         try {
                             const endpoint =
                                 postType === "event"
-                                    ? `${API_URL}/events/${postId}`
-                                    : `${API_URL}/announcements/${postId}`;
-                            const res = await fetch(endpoint, { method: "DELETE" });
+                                    ? `/events/${postId}`
+                                    : `/announcements/${postId}`;
+                            const res = await apiFetch(endpoint, { method: "DELETE" });
                             if (!res.ok) throw new Error("Delete failed");
-                            // Remove from local state immediately — no need to re-fetch
                             setPosts((prev) =>
                                 prev.filter((p) => !(p.id === postId && p.type === postType))
                             );
@@ -299,7 +332,6 @@ export default function YourClub() {
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
             >
-                {/* ── HEADER: Banner + Avatar ── */}
                 <View style={styles.headerContainer}>
                     <Image
                         source={org.imageUrl ? { uri: org.imageUrl } : require("../../assets/adaptive-icon.png")}
@@ -314,7 +346,6 @@ export default function YourClub() {
                     </View>
                 </View>
 
-                {/* ── CLUB INFO ── */}
                 <View style={[styles.infoSection, { backgroundColor: theme.background }]}>
                     <View style={styles.nameRow}>
                         <View style={{ flex: 1 }}>
@@ -323,7 +354,6 @@ export default function YourClub() {
                                 {org._count?.followers ?? 0} followers
                             </Text>
                         </View>
-                        {/* Edit club info button */}
                         <Pressable
                             style={[styles.editButton, { borderColor: theme.iconColor }]}
                             onPress={() => setShowEditModal(true)}
@@ -339,6 +369,18 @@ export default function YourClub() {
                         </Text>
                     )}
 
+                    {/* Org switcher — only when the user manages multiple clubs */}
+                    {managedList.length > 1 && (
+                        <Pressable
+                            style={[styles.orgSwitcher, { borderColor: theme.iconColor }]}
+                            onPress={() => setShowOrgPicker(true)}
+                        >
+                            <Text style={{ color: theme.text, fontSize: 12, fontWeight: "600" }}>
+                                🔀 Managing {managedList.length} clubs · Tap to switch
+                            </Text>
+                        </Pressable>
+                    )}
+
                     <Pressable
                         style={[styles.managersChip, { borderColor: theme.iconColor }]}
                         onPress={() => setShowManagersModal(true)}
@@ -349,7 +391,6 @@ export default function YourClub() {
                     </Pressable>
                 </View>
 
-                {/* ── CREATE POST BUTTONS ── */}
                 <View style={styles.actionsRow}>
                     <Pressable
                         style={[styles.actionBtn, { backgroundColor: "#007AFF" }]}
@@ -365,7 +406,6 @@ export default function YourClub() {
                     </Pressable>
                 </View>
 
-                {/* ── POSTS ── */}
                 <View style={styles.postsSection}>
                     <Text style={[styles.sectionTitle, { color: theme.text }]}>Your Posts</Text>
                     {posts.length === 0 ? (
@@ -385,13 +425,53 @@ export default function YourClub() {
                                         : post.body
                                 }
                                 bannerColor={post.color ?? undefined}
-                                onPress={() => { }}   // managers viewing their own posts — no detail nav needed
+                                onPress={() => { }}
                                 onDelete={() => handleDeletePost(post.type, post.id)}
                             />
                         ))
                     )}
                 </View>
             </ScrollView>
+
+            {/* ── ORG SWITCHER MODAL ── */}
+            <Modal
+                visible={showOrgPicker}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setShowOrgPicker(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalBox, { backgroundColor: theme.uiBackground }]}>
+                        <Text style={[styles.modalTitle, { color: theme.text }]}>Switch Club</Text>
+                        {managedList.map((m) => {
+                            const isActive = m.id === activeOrgId;
+                            return (
+                                <Pressable
+                                    key={m.id}
+                                    style={[
+                                        styles.orgPickerRow,
+                                        { borderColor: theme.iconColor },
+                                        isActive && { backgroundColor: theme.background },
+                                    ]}
+                                    onPress={() => switchOrg(m.id)}
+                                >
+                                    <Text style={{ color: theme.text, fontSize: 15, fontWeight: isActive ? "700" : "500" }}>
+                                        {isActive ? "✓ " : ""}{m.name}
+                                    </Text>
+                                </Pressable>
+                            );
+                        })}
+                        <View style={styles.modalButtons}>
+                            <Pressable
+                                style={[styles.modalBtn, { borderColor: theme.iconColor, borderWidth: 1 }]}
+                                onPress={() => setShowOrgPicker(false)}
+                            >
+                                <Text style={{ color: theme.text }}>Close</Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
 
             {/* ── EDIT CLUB INFO MODAL ── */}
             <Modal
@@ -496,7 +576,6 @@ export default function YourClub() {
 
                         {modalType === "event" ? (
                             <>
-                                {/* REMOVE the old location TextInput and replace with: */}
                                 <Text style={[styles.fieldLabel, { color: theme.iconColor }]}>Location</Text>
                                 <TextInput
                                     placeholder="Search for a location..."
@@ -506,7 +585,6 @@ export default function YourClub() {
                                     style={[styles.input, { borderColor: theme.iconColor, color: theme.text }]}
                                 />
 
-                                {/* Suggestions dropdown */}
                                 {locationSuggestions.length > 0 && (
                                     <View style={[styles.suggestionsBox, { backgroundColor: theme.uiBackground, borderColor: theme.iconColor }]}>
                                         {locationSearching && (
@@ -514,7 +592,7 @@ export default function YourClub() {
                                         )}
                                         {locationSuggestions.map((place, index) => (
                                             <Pressable
-                                                key={index}
+                                                key={`${place.display_name}-${index}`}
                                                 style={[
                                                     styles.suggestionRow,
                                                     { borderBottomColor: theme.iconColor },
@@ -717,7 +795,7 @@ const styles = StyleSheet.create({
     textArea: { height: 90, textAlignVertical: "top" },
     modalButtons: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 8 },
     modalBtn: { borderRadius: 10, paddingVertical: 10, paddingHorizontal: 20 },
-    suggestionsBox: { borderWidth: 1, borderRadius: 10, marginTop: -8, overflow: "hidden", maxHeight: 200, },
+    suggestionsBox: { borderWidth: 1, borderRadius: 10, marginTop: -8, overflow: "hidden", maxHeight: 200 },
     suggestionRow: { padding: 12, borderBottomWidth: 1 },
     imagePickerBtn: { alignItems: "center", marginBottom: 4 },
     imagePickerPreview: { width: 100, height: 100, borderRadius: 50 },
@@ -727,4 +805,6 @@ const styles = StyleSheet.create({
     managersList: { borderWidth: 1, borderRadius: 10, overflow: "hidden", maxHeight: 220 },
     managerRow: { flexDirection: "row", alignItems: "center", padding: 10, borderBottomWidth: 1, gap: 10 },
     managerAvatar: { width: 36, height: 36, borderRadius: 18 },
+    orgSwitcher: { alignSelf: "flex-start", borderWidth: 1, borderRadius: 14, paddingVertical: 6, paddingHorizontal: 12, marginTop: 12 },
+    orgPickerRow: { padding: 14, borderRadius: 10, borderWidth: 1, marginBottom: 8 },
 });
