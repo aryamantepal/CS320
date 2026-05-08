@@ -203,8 +203,16 @@ export default function YourClub() {
         setSubmitting(true);
         try {
             if (modalType === "event") {
-                if (!postLocation.trim()) return Alert.alert("Error", "Location is required");
-                if (!postDate.trim()) return Alert.alert("Error", "Date is required");
+                if (modalType === "event") {
+                    if (!postLocation.trim()) {
+                        setSubmitting(false);
+                        return Alert.alert("Error", "Location is required");
+                    }
+
+                    if (!postDate) {
+                        setSubmitting(false);
+                        return Alert.alert("Error", "Date is required");
+                    }
 
                 await fetch(`${API_URL}/orgs/${org.id}/events`, {
                     method: "POST",
@@ -236,7 +244,7 @@ export default function YourClub() {
             setPostLocation("");
             setPostDate(new Date());
             setModalType(null);
-        } catch (err) {
+        }} catch (err) {
             console.error("Failed to create post:", err);
             Alert.alert("Error", "Something went wrong. Try again.");
         } finally {

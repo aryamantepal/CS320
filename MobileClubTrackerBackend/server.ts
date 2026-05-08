@@ -13,25 +13,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// For already existing events/announcements without colors, you can run this in a psql console:
-/*
-npx prisma db execute --stdin <<'EOF'
-UPDATE "Event"
-SET color = 'rgb(' || 
-    (floor(random() * 120) + 80 )::int || ',' || 
-    (floor(random() * 120) + 80 )::int || ',' || 
-    (floor(random() * 120) + 80 )::int || ')'
-WHERE color IS NULL;
-
-UPDATE "Announcement"
-SET color = 'rgb(' || 
-    (floor(random() * 120) + 80 )::int || ',' || 
-    (floor(random() * 120) + 80 )::int || ',' || 
-    (floor(random() * 120) + 80 )::int || ')'
-WHERE color IS NULL;
-EOF
-*/
-
 // ── ADMIN HELPER ──────────────────────────────────────────────────────────────
 // Looks up the caller by `adminUserId` (from body, query, or x-admin-user-id header)
 // and confirms their role is "admin". Returns the admin user on success, or sends
