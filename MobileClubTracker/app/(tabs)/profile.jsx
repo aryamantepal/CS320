@@ -310,10 +310,6 @@ export default function Profile() {
                     <Text style={[styles.sectionTitle, { color: theme.text }]}>Account Settings</Text>
                     {[
                         {
-                            label: "Dark Mode",
-                            onPress: () => setIsDarkMode((v) => !v),
-                        },
-                        {
                             label: "Change Password",
                             onPress: () => setShowPasswordModal(true),
                         },
